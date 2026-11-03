@@ -15,6 +15,10 @@
     "allow-test-server-connection",
     "allow-trust-host-key",
     "allow-forget-host-key",
-    "allow-list-host-keys"
+    "allow-list-host-keys",
+    "allow-open-terminal",
+    "allow-terminal-write",
+    "allow-terminal-resize",
+    "allow-close-terminal"
   ]
 }

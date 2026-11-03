@@ -25,6 +25,7 @@ uuid = { version = "1.29.0", features = ["v4"] }
 keyring = { version = "3", features = ["windows-native"] }
 tokio = { version = "1.54.1", features = ["rt", "net", "time", "macros", "rt-multi-thread"] }
 russh = { version = "0.65.0", default-features = false, features = ["flate2", "ring", "rsa"] }
+base64 = "0.23.1"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

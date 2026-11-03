@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
+/// How often an interactive session pings an idle server.
+const KEEPALIVE: Duration = Duration::from_secs(30);
 
 /// Secret material used for authentication. Never printed or serialized.
 pub enum AuthSecret {
@@ -70,13 +72,13 @@ pub struct ConnectionTestResult {
 }
 
 #[derive(Default)]
-struct Seen {
-    observed: Option<ObservedKey>,
-    decision: Option<HostKeyDecision>,
-    unsupported_cert: bool,
+pub(super) struct Seen {
+    pub(super) observed: Option<ObservedKey>,
+    pub(super) decision: Option<HostKeyDecision>,
+    pub(super) unsupported_cert: bool,
 }
 
-struct Handler {
+pub(super) struct Handler {
     stored: Option<HostKeyRecord>,
     seen: Arc<Mutex<Seen>>,
 }
@@ -105,7 +107,9 @@ impl client::Handler for Handler {
     }
 }
 
-enum Failure {
+pub(super) type Session = client::Handle<Handler>;
+
+pub(super) enum Failure {
     Connect(russh::Error),
     AuthFailed,
     NoCredential,
@@ -113,10 +117,28 @@ enum Failure {
     Other(String),
 }
 
-async fn attempt(params: &TestParams, seen: Arc<Mutex<Seen>>) -> Result<(), Failure> {
-    let config = Arc::new(client::Config {
-        inactivity_timeout: Some(params.timeout),
-        ..Default::default()
+/// Connects, verifies the host key against the stored one, and authenticates.
+///
+/// This is the single path used by both the connection test and the terminal, so the host key
+/// rules apply identically: nothing is sent to a host whose key is not already trusted.
+/// `interactive` sessions stay open indefinitely (with keepalives) instead of timing out.
+pub(super) async fn connect_authenticated(
+    params: &TestParams,
+    seen: Arc<Mutex<Seen>>,
+    interactive: bool,
+) -> Result<Session, Failure> {
+    let config = Arc::new(if interactive {
+        client::Config {
+            inactivity_timeout: None,
+            keepalive_interval: Some(KEEPALIVE),
+            keepalive_max: 3,
+            ..Default::default()
+        }
+    } else {
+        client::Config {
+            inactivity_timeout: Some(params.timeout),
+            ..Default::default()
+        }
     });
     let handler = Handler {
         stored: params.stored.clone(),
@@ -136,10 +158,12 @@ async fn attempt(params: &TestParams, seen: Arc<Mutex<Seen>>) -> Result<(), Fail
             .success(),
         AuthSecret::PrivateKey(pem) => {
             let key = decode_secret_key(pem, None).map_err(|e| match e {
-                russh::keys::Error::KeyIsEncrypted => {
-                    Failure::BadKey("This private key is passphrase-protected, which is not supported yet.")
-                }
-                _ => Failure::BadKey("The stored private key could not be read. Check that it is a valid, unencrypted private key."),
+                russh::keys::Error::KeyIsEncrypted => Failure::BadKey(
+                    "This private key is passphrase-protected, which is not supported yet.",
+                ),
+                _ => Failure::BadKey(
+                    "The stored private key could not be read. Check that it is a valid, unencrypted private key.",
+                ),
             })?;
             let hash = session
                 .best_supported_rsa_hash()
@@ -157,16 +181,23 @@ async fn attempt(params: &TestParams, seen: Arc<Mutex<Seen>>) -> Result<(), Fail
         }
     };
 
-    // Best effort: we're done either way.
+    if authenticated {
+        Ok(session)
+    } else {
+        let _ = session
+            .disconnect(Disconnect::ByApplication, "authentication failed", "en")
+            .await;
+        Err(Failure::AuthFailed)
+    }
+}
+
+async fn attempt(params: &TestParams, seen: Arc<Mutex<Seen>>) -> Result<(), Failure> {
+    let session = connect_authenticated(params, seen, false).await?;
+    // Best effort: we're done either way. No channel is ever opened.
     let _ = session
         .disconnect(Disconnect::ByApplication, "connection test complete", "en")
         .await;
-
-    if authenticated {
-        Ok(())
-    } else {
-        Err(Failure::AuthFailed)
-    }
+    Ok(())
 }
 
 fn describe_io(err: &std::io::Error) -> String {
@@ -179,13 +210,84 @@ fn describe_io(err: &std::io::Error) -> String {
     }
 }
 
+/// Turns a failure into an outcome, a user-facing message and (for a changed key) the
+/// previously trusted fingerprint. Messages never contain secrets.
+pub(super) fn explain(
+    failure: &Failure,
+    params: &TestParams,
+    seen: &Arc<Mutex<Seen>>,
+) -> (Outcome, String, Option<String>) {
+    match failure {
+        Failure::AuthFailed => (
+            Outcome::AuthFailed,
+            "The server rejected the username or credential.".into(),
+            None,
+        ),
+        Failure::NoCredential => (
+            Outcome::NoCredential,
+            "Host key verified, but no credential is stored for this server. Add one by editing the server.".into(),
+            None,
+        ),
+        Failure::BadKey(msg) => (Outcome::Error, (*msg).into(), None),
+        Failure::Other(msg) => (Outcome::Error, msg.clone(), None),
+        Failure::Connect(err) => {
+            let (decision, unsupported) = {
+                let s = seen.lock().ok();
+                (
+                    s.as_ref().and_then(|s| s.decision.clone()),
+                    s.as_ref().is_some_and(|s| s.unsupported_cert),
+                )
+            };
+            match decision {
+                Some(HostKeyDecision::Unknown) => (
+                    Outcome::HostKeyUnknown,
+                    "This server's host key is not trusted yet. Verify the fingerprint below, then trust it.".into(),
+                    None,
+                ),
+                Some(HostKeyDecision::Changed { expected }) => (
+                    Outcome::HostKeyChanged,
+                    "WARNING: the server's host key does not match the one you trusted. This could mean the server was rebuilt, or that someone is impersonating it. No credentials were sent.".into(),
+                    Some(expected),
+                ),
+                _ if unsupported => (
+                    Outcome::Error,
+                    "The server presented a host certificate, which is not supported yet.".into(),
+                    None,
+                ),
+                _ => match err {
+                    russh::Error::IO(io) => (
+                        Outcome::Unreachable,
+                        format!(
+                            "Could not reach {}:{}: {}.",
+                            params.host,
+                            params.port,
+                            describe_io(io)
+                        ),
+                        None,
+                    ),
+                    other => (Outcome::Error, format!("SSH connection failed: {other}"), None),
+                },
+            }
+        }
+    }
+}
+
 /// Runs the test. Never returns secrets in the result.
 pub async fn run_test(params: TestParams) -> ConnectionTestResult {
     let started = Instant::now();
     let seen = Arc::new(Mutex::new(Seen::default()));
 
-    let result = match tokio::time::timeout(params.timeout, attempt(&params, seen.clone())).await {
-        Ok(r) => r,
+    let failure = match tokio::time::timeout(params.timeout, attempt(&params, seen.clone())).await {
+        Ok(Ok(())) => {
+            return finish(
+                &seen,
+                Outcome::Success,
+                "Host key verified and authentication succeeded. The connection was closed without running anything.".into(),
+                None,
+                started,
+            );
+        }
+        Ok(Err(failure)) => failure,
         Err(_) => {
             return finish(
                 &seen,
@@ -201,80 +303,8 @@ pub async fn run_test(params: TestParams) -> ConnectionTestResult {
             );
         }
     };
-
-    match result {
-        Ok(()) => finish(
-            &seen,
-            Outcome::Success,
-            "Host key verified and authentication succeeded. The connection was closed without running anything.".into(),
-            None,
-            started,
-        ),
-        Err(Failure::AuthFailed) => finish(
-            &seen,
-            Outcome::AuthFailed,
-            "The server rejected the username or credential.".into(),
-            None,
-            started,
-        ),
-        Err(Failure::NoCredential) => finish(
-            &seen,
-            Outcome::NoCredential,
-            "Host key verified, but no credential is stored for this server. Add one by editing the server.".into(),
-            None,
-            started,
-        ),
-        Err(Failure::BadKey(msg)) => finish(&seen, Outcome::Error, msg.into(), None, started),
-        Err(Failure::Other(msg)) => finish(&seen, Outcome::Error, msg, None, started),
-        Err(Failure::Connect(err)) => {
-            let (decision, unsupported) = {
-                let s = seen.lock().ok();
-                (
-                    s.as_ref().and_then(|s| s.decision.clone()),
-                    s.as_ref().is_some_and(|s| s.unsupported_cert),
-                )
-            };
-            match decision {
-                Some(HostKeyDecision::Unknown) => finish(
-                    &seen,
-                    Outcome::HostKeyUnknown,
-                    "This server's host key is not trusted yet. Verify the fingerprint below, then trust it.".into(),
-                    None,
-                    started,
-                ),
-                Some(HostKeyDecision::Changed { expected }) => finish(
-                    &seen,
-                    Outcome::HostKeyChanged,
-                    "WARNING: the server's host key does not match the one you trusted. This could mean the server was rebuilt, or that someone is impersonating it. No credentials were sent.".into(),
-                    Some(expected),
-                    started,
-                ),
-                _ if unsupported => finish(
-                    &seen,
-                    Outcome::Error,
-                    "The server presented a host certificate, which is not supported yet.".into(),
-                    None,
-                    started,
-                ),
-                _ => match err {
-                    russh::Error::IO(io) => finish(
-                        &seen,
-                        Outcome::Unreachable,
-                        format!("Could not reach {}:{}: {}.", params.host, params.port, describe_io(&io)),
-                        None,
-                        started,
-                    ),
-                    other => finish(
-                        &seen,
-                        Outcome::Error,
-                        format!("SSH connection failed: {other}"),
-                        None,
-                        started,
-                    ),
-                },
-            }
-        }
-    }
+    let (outcome, message, expected) = explain(&failure, &params, &seen);
+    finish(&seen, outcome, message, expected, started)
 }
 
 fn finish(

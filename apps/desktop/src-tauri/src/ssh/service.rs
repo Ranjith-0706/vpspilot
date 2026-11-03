@@ -15,8 +15,8 @@ use std::collections::HashMap;
 /// not yet trusted. Only a fingerprint matching this entry can be trusted.
 pub type PendingKeys = HashMap<String, ObservedKey>;
 
-/// Loads everything a test needs from storage. The secret is read here, inside Rust.
-pub fn prepare_test(
+/// Loads everything a connection (test or terminal) needs from storage. The secret is read here, inside Rust.
+pub fn prepare_connection(
     conn: &Connection,
     store: &dyn CredentialStore,
     id: &str,
@@ -111,7 +111,7 @@ mod tests {
         let conn = open_in_memory();
         let store = MemoryStore::default();
         let s = servers::add_server(&conn, &input(AuthMethod::Password), 0).unwrap();
-        let p = prepare_test(&conn, &store, &s.id).unwrap();
+        let p = prepare_connection(&conn, &store, &s.id).unwrap();
         assert!(matches!(p.auth, AuthSecret::None));
         assert_eq!(
             (p.host.as_str(), p.port, p.username.as_str()),
@@ -120,13 +120,13 @@ mod tests {
 
         servers::set_credential(&conn, &store, &s.id, "pw", 1).unwrap();
         assert!(
-            matches!(prepare_test(&conn, &store, &s.id).unwrap().auth, AuthSecret::Password(ref x) if x == "pw")
+            matches!(prepare_connection(&conn, &store, &s.id).unwrap().auth, AuthSecret::Password(ref x) if x == "pw")
         );
 
         let k = servers::add_server(&conn, &input(AuthMethod::SshKey), 0).unwrap();
         servers::set_credential(&conn, &store, &k.id, "KEY", 1).unwrap();
         assert!(
-            matches!(prepare_test(&conn, &store, &k.id).unwrap().auth, AuthSecret::PrivateKey(ref x) if x == "KEY")
+            matches!(prepare_connection(&conn, &store, &k.id).unwrap().auth, AuthSecret::PrivateKey(ref x) if x == "KEY")
         );
     }
 
@@ -135,7 +135,7 @@ mod tests {
         let conn = open_in_memory();
         let store = MemoryStore::default();
         assert_eq!(
-            prepare_test(&conn, &store, "nope").unwrap_err().code,
+            prepare_connection(&conn, &store, "nope").unwrap_err().code,
             ErrorCode::NotFound
         );
         let s = AuthSecret::Password("hunter2".into());

@@ -39,7 +39,8 @@ export interface ServerFormValues {
 export type ServerFormField = keyof ServerFormValues;
 export type ServerFormErrors = Partial<Record<ServerFormField, string>>;
 
-export type AppErrorCode = "validation" | "not_found" | "database" | "credential" | "internal";
+export type AppErrorCode =
+  "validation" | "not_found" | "database" | "credential" | "connection" | "internal";
 
 export interface AppError {
   code: AppErrorCode;

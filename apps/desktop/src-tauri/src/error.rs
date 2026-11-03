@@ -7,6 +7,7 @@ pub enum ErrorCode {
     NotFound,
     Database,
     Credential,
+    Connection,
     Internal,
 }
 
@@ -49,6 +50,14 @@ impl AppError {
     pub fn credential(message: impl Into<String>) -> Self {
         Self {
             code: ErrorCode::Credential,
+            message: message.into(),
+            field: None,
+        }
+    }
+
+    pub fn connection(message: impl Into<String>) -> Self {
+        Self {
+            code: ErrorCode::Connection,
             message: message.into(),
             field: None,
         }

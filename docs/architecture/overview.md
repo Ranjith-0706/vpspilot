@@ -71,9 +71,27 @@ anything on the server.
 | key_type | TEXT | e.g. `ssh-ed25519` |
 | fingerprint | TEXT | must start with `SHA256:` |
 | trusted_at | INTEGER | Unix epoch milliseconds |
+## SSH terminal (Milestone 4)
+
+The Terminal page opens an interactive shell (with a PTY) on one of the user's *saved servers*,
+rendered with xterm.js. Nothing runs on the local machine.
+
+- **Same trust path as the test:** `connect_authenticated` in `ssh/client.rs` is shared. The
+  terminal additionally refuses to start unless the host key is already trusted and a credential is
+  stored, so no credential is ever sent to an unverified host.
+- **Commands** (`open_terminal`, `terminal_write`, `terminal_resize`, `close_terminal`) take a
+  server id or an unguessable session id. The frontend never supplies host, port, user or secret.
+- **Streaming:** output flows Rust -> frontend through a Tauri `Channel` as base64 bytes (so UTF-8
+  split across packets stays intact). Backpressure: the session waits when the UI is slow.
+- **Input:** typed text is sent as-is; pastes are split into chunks (backend cap 64 KiB per write).
+- **Limits:** at most 8 concurrent sessions; terminal size 1-1000 per axis; keepalive every 30 s;
+  a closed window or dropped channel ends the remote shell.
+- **Not supported yet:** passphrase-protected keys, multiple tabs, session logging, SFTP,
+  scrollback persistence, reconnect-on-network-change.
 ## Milestone status
 
 - Milestone 1: UI shell, routing, theming, demo data.
 - Milestone 2: local server profiles, SQLite, credential store.
 - Milestone 3: SSH connection test with host key verification (no terminal or commands).
-- Future: terminal, Docker, live monitoring, Go agent.
+- Milestone 4: interactive SSH terminal (xterm.js).
+- Future: Docker, live monitoring, Go agent, passphrase-protected keys.

@@ -40,6 +40,7 @@ pub fn run() {
                 db,
                 credentials: Box::new(credentials::OsCredentialStore),
                 pending_host_keys: Mutex::new(Default::default()),
+                terminals: Default::default(),
             });
             Ok(())
         })
@@ -55,6 +56,10 @@ pub fn run() {
             commands::ssh::trust_host_key,
             commands::ssh::forget_host_key,
             commands::ssh::list_host_keys,
+            commands::terminal::open_terminal,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::close_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running VPSPilot");

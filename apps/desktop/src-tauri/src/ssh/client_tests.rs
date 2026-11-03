@@ -4,10 +4,11 @@ use super::client::{AuthSecret, ConnectionTestResult, Outcome, TestParams, run_t
 use super::hostkey::HostKeyRecord;
 use russh::keys::ssh_key::LineEnding;
 use russh::keys::{Algorithm, HashAlg, PrivateKey, PublicKey};
-use russh::server::{self, Auth, Server as _, VerifiedPublicKey};
+use russh::server::{self, Auth, Msg, Server as _, Session, VerifiedPublicKey};
+use russh::{Channel, ChannelId};
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::net::TcpListener;
 
@@ -18,6 +19,8 @@ const PASSWORD: &str = "correct-pw";
 struct TestServer {
     allowed_key: Option<PublicKey>,
     attempts: Arc<AtomicUsize>,
+    /// What the server observed on the shell channel (pty size, resizes, ...).
+    log: Arc<Mutex<Vec<String>>>,
 }
 
 impl server::Server for TestServer {
@@ -29,6 +32,80 @@ impl server::Server for TestServer {
 
 impl server::Handler for TestServer {
     type Error = russh::Error;
+
+    async fn channel_open_session(
+        &mut self,
+        _channel: Channel<Msg>,
+        reply: server::ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn pty_request(
+        &mut self,
+        channel: ChannelId,
+        term: &str,
+        cols: u32,
+        rows: u32,
+        _pix_w: u32,
+        _pix_h: u32,
+        _modes: &[(russh::Pty, u32)],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        self.log
+            .lock()
+            .unwrap()
+            .push(format!("pty {term} {cols}x{rows}"));
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        session.data(channel, &b"welcome\r\n"[..])?;
+        Ok(())
+    }
+
+    async fn window_change_request(
+        &mut self,
+        channel: ChannelId,
+        cols: u32,
+        rows: u32,
+        _pix_w: u32,
+        _pix_h: u32,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        self.log
+            .lock()
+            .unwrap()
+            .push(format!("resize {cols}x{rows}"));
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    /// Echoes input back with a prefix; the line "exit" ends the shell.
+    async fn data(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if data == b"exit\n" {
+            session.eof(channel)?;
+            session.close(channel)?;
+        } else {
+            let mut out = b"echo:".to_vec();
+            out.extend_from_slice(data);
+            session.data(channel, out)?;
+        }
+        Ok(())
+    }
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         self.attempts.fetch_add(1, Ordering::SeqCst);
@@ -50,11 +127,11 @@ impl server::Handler for TestServer {
     }
 }
 
-fn new_key() -> PrivateKey {
+pub(super) fn new_key() -> PrivateKey {
     PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap()
 }
 
-fn fingerprint(key: &PrivateKey) -> String {
+pub(super) fn fingerprint(key: &PrivateKey) -> String {
     key.public_key().fingerprint(HashAlg::Sha256).to_string()
 }
 
@@ -62,15 +139,17 @@ fn openssh_pem(key: &PrivateKey) -> String {
     key.to_openssh(LineEnding::LF).unwrap().to_string()
 }
 
-struct Running {
-    port: u16,
-    host_key: PrivateKey,
-    attempts: Arc<AtomicUsize>,
+pub(super) struct Running {
+    pub(super) port: u16,
+    pub(super) host_key: PrivateKey,
+    pub(super) attempts: Arc<AtomicUsize>,
+    pub(super) log: Arc<Mutex<Vec<String>>>,
 }
 
-async fn start_server(allowed_key: Option<PublicKey>) -> Running {
+pub(super) async fn start_server(allowed_key: Option<PublicKey>) -> Running {
     let host_key = new_key();
     let attempts = Arc::new(AtomicUsize::new(0));
+    let log = Arc::new(Mutex::new(Vec::new()));
     let config = Arc::new(server::Config {
         keys: vec![host_key.clone()],
         auth_rejection_time: Duration::from_millis(10),
@@ -82,6 +161,7 @@ async fn start_server(allowed_key: Option<PublicKey>) -> Running {
     let mut srv = TestServer {
         allowed_key,
         attempts: attempts.clone(),
+        log: log.clone(),
     };
     tokio::spawn(async move {
         let running = srv.run_on_socket(config, &listener);
@@ -91,10 +171,11 @@ async fn start_server(allowed_key: Option<PublicKey>) -> Running {
         port,
         host_key,
         attempts,
+        log,
     }
 }
 
-fn stored(fp: &str) -> Option<HostKeyRecord> {
+pub(super) fn stored(fp: &str) -> Option<HostKeyRecord> {
     Some(HostKeyRecord {
         server_id: "s".into(),
         key_type: "ssh-ed25519".into(),
@@ -103,7 +184,7 @@ fn stored(fp: &str) -> Option<HostKeyRecord> {
     })
 }
 
-fn params(port: u16, auth: AuthSecret, stored: Option<HostKeyRecord>) -> TestParams {
+pub(super) fn params(port: u16, auth: AuthSecret, stored: Option<HostKeyRecord>) -> TestParams {
     TestParams {
         host: "127.0.0.1".into(),
         port,

@@ -12,6 +12,10 @@ const COMMANDS: &[&str] = &[
     "trust_host_key",
     "forget_host_key",
     "list_host_keys",
+    "open_terminal",
+    "terminal_write",
+    "terminal_resize",
+    "close_terminal",
 ];
 
 fn main() {

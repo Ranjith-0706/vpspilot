@@ -17,7 +17,7 @@ pub async fn test_server_connection(
     // Load everything first; the database guard must not be held across the network await.
     let params = {
         let conn = state.conn()?;
-        service::prepare_test(&conn, state.credentials.as_ref(), &id)?
+        service::prepare_connection(&conn, state.credentials.as_ref(), &id)?
     };
 
     let result = client::run_test(params).await;
