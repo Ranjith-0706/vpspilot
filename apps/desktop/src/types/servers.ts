@@ -49,3 +49,37 @@ export interface AppError {
 
 /** Real connectivity is not implemented yet, so every profile is "not_connected". */
 export type ConnectionState = "not_connected";
+
+export type ConnectionTestOutcome =
+  | "success"
+  | "host_key_unknown"
+  | "host_key_changed"
+  | "auth_failed"
+  | "no_credential"
+  | "unreachable"
+  | "timeout"
+  | "error";
+
+export interface HostKeyInfo {
+  keyType: string;
+  /** OpenSSH-style SHA-256 fingerprint, e.g. "SHA256:abc...". */
+  fingerprint: string;
+}
+
+/** Result of one connection test. Never contains secrets. */
+export interface ConnectionTestResult {
+  outcome: ConnectionTestOutcome;
+  message: string;
+  hostKey?: HostKeyInfo;
+  /** Set when the host key changed: the fingerprint that was previously trusted. */
+  expectedFingerprint?: string;
+  latencyMs?: number;
+  /** Unix epoch milliseconds. */
+  testedAt: number;
+}
+
+export interface HostKeyRecord extends HostKeyInfo {
+  serverId: string;
+  /** Unix epoch milliseconds. */
+  trustedAt: number;
+}

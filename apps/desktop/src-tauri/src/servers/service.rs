@@ -44,6 +44,10 @@ pub fn update_server(
     if !repo::update(conn, id, &valid, now)? {
         return Err(AppError::not_found("Server"));
     }
+    // A different host or port is a different machine: its trusted host key no longer applies.
+    if existing.host != valid.host || existing.port != valid.port {
+        crate::ssh::known_hosts::delete(conn, id)?;
+    }
     if method_changed && existing.credential_ref.is_some() {
         repo::set_credential_ref(conn, id, None, now)?;
     }

@@ -11,6 +11,10 @@
     "allow-update-server",
     "allow-delete-server",
     "allow-set-server-credential",
-    "allow-clear-server-credential"
+    "allow-clear-server-credential",
+    "allow-test-server-connection",
+    "allow-trust-host-key",
+    "allow-forget-host-key",
+    "allow-list-host-keys"
   ]
 }

@@ -39,7 +39,20 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
 
         CREATE INDEX idx_servers_name ON servers (name COLLATE NOCASE);
     ",
-}];
+    },
+    Migration {
+        version: 2,
+        name: "create_known_host_keys",
+        sql: "
+        CREATE TABLE known_host_keys (
+            server_id   TEXT PRIMARY KEY NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+            key_type    TEXT NOT NULL CHECK (length(key_type) BETWEEN 1 AND 64),
+            fingerprint TEXT NOT NULL CHECK (fingerprint LIKE 'SHA256:%' AND length(fingerprint) <= 128),
+            trusted_at  INTEGER NOT NULL
+        );
+    ",
+    },
+];
 
 #[cfg(test)]
 pub fn latest_version() -> u32 {
@@ -210,6 +223,28 @@ mod tests {
             )
             .unwrap();
         assert_eq!(exists, 0);
+    }
+
+    #[test]
+    fn v1_database_with_data_upgrades_to_latest_keeping_servers() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        configure(&conn).unwrap();
+        assert_eq!(migrate_with(&mut conn, &MIGRATIONS[..1], 0).unwrap(), 1);
+        conn.execute(
+            "INSERT INTO servers (id,name,host,port,username,auth_method,created_at,updated_at)
+             VALUES ('keep','n','h',22,'u','password',0,0)",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(migrate(&mut conn).unwrap(), latest_version());
+        let name: String = conn
+            .query_row("SELECT name FROM servers WHERE id = 'keep'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(name, "n");
+        assert_eq!(columns(&conn, "known_host_keys").len(), 4);
     }
 
     #[test]

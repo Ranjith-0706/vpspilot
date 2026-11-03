@@ -8,6 +8,7 @@ mod credentials;
 mod db;
 mod error;
 mod servers;
+mod ssh;
 mod state;
 
 use std::sync::Mutex;
@@ -38,6 +39,7 @@ pub fn run() {
             app.manage(state::AppState {
                 db,
                 credentials: Box::new(credentials::OsCredentialStore),
+                pending_host_keys: Mutex::new(Default::default()),
             });
             Ok(())
         })
@@ -49,6 +51,10 @@ pub fn run() {
             commands::servers::delete_server,
             commands::servers::set_server_credential,
             commands::servers::clear_server_credential,
+            commands::ssh::test_server_connection,
+            commands::ssh::trust_host_key,
+            commands::ssh::forget_host_key,
+            commands::ssh::list_host_keys,
         ])
         .run(tauri::generate_context!())
         .expect("error while running VPSPilot");

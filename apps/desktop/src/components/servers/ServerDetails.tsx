@@ -22,11 +22,13 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 export function ServerDetails({
   server,
+  extra,
   onClose,
   onEdit,
   onDelete,
 }: {
   server: ServerProfile;
+  extra?: React.ReactNode;
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -73,6 +75,7 @@ export function ServerDetails({
           <span className="font-mono text-xs">{server.id}</span>
         </Row>
       </dl>
+      {extra}
       <div className="mt-5 flex gap-2">
         <Button onClick={onEdit}>Edit</Button>
         <Button variant="danger" onClick={onDelete}>

@@ -8,6 +8,10 @@ const COMMANDS: &[&str] = &[
     "delete_server",
     "set_server_credential",
     "clear_server_credential",
+    "test_server_connection",
+    "trust_host_key",
+    "forget_host_key",
+    "list_host_keys",
 ];
 
 fn main() {

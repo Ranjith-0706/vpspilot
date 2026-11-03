@@ -1,5 +1,12 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { AppError, AppErrorCode, ServerInput, ServerProfile } from "../types/servers";
+import type {
+  AppError,
+  AppErrorCode,
+  ConnectionTestResult,
+  HostKeyRecord,
+  ServerInput,
+  ServerProfile,
+} from "../types/servers";
 
 const CODES: AppErrorCode[] = ["validation", "not_found", "database", "credential", "internal"];
 
@@ -42,4 +49,11 @@ export const serversApi = {
   setCredential: (id: string, secret: string) =>
     call<ServerProfile>("set_server_credential", { id, secret }),
   clearCredential: (id: string) => call<ServerProfile>("clear_server_credential", { id }),
+  /** Tests a saved server only; the backend reads host, port and credential itself. */
+  testConnection: (id: string) => call<ConnectionTestResult>("test_server_connection", { id }),
+  /** Trusts the key the server presented on its last test; `fingerprint` must match it. */
+  trustHostKey: (id: string, fingerprint: string) =>
+    call<HostKeyRecord>("trust_host_key", { id, fingerprint }),
+  forgetHostKey: (id: string) => call<void>("forget_host_key", { id }),
+  listHostKeys: () => call<HostKeyRecord[]>("list_host_keys"),
 };

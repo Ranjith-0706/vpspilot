@@ -42,8 +42,38 @@ VPSPilot is a Tauri 2 desktop app.
 | description | TEXT NULL | max 500 chars |
 | created_at / updated_at | INTEGER | Unix epoch milliseconds |
 
+## SSH connection test (Milestone 3)
+
+A saved server can be tested from its details panel. The test connects, verifies the host key,
+authenticates, and disconnects. It never opens a channel, shell or exec request, so it cannot run
+anything on the server.
+
+- **Library:** `russh` (pure Rust, `ring` crypto backend; no OpenSSL or CMake needed on Windows).
+- **Host keys (trust on first use):** the first test shows the server's SHA-256 fingerprint and
+  stops *before* sending any credential. The user compares it with the real server's fingerprint and
+  explicitly trusts it. The trusted key is stored in `known_host_keys` (one per server).
+- **Changed key:** a mismatch is a hard failure, again before any credential is sent. There is no
+  one-click override; the user must deliberately "Forget host key" and re-verify.
+- **Trust is bound to what the backend saw:** `trust_host_key` only accepts the fingerprint of the
+  key presented on the last test (kept in memory), so the UI cannot trust an arbitrary value.
+- **Host or port edits** delete the trusted key (it is a different machine).
+- **Commands take a server id only.** The backend reads host, port, username and secret itself; the
+  frontend can never supply connection parameters. The secret never reaches the frontend.
+- **Timeouts:** 15 seconds overall.
+- **Not supported yet:** passphrase-protected private keys, host certificates, ssh-agent, jump hosts.
+- **Test results** are shown in the UI for the current session only and are not persisted.
+
+### known_host_keys table (migration 2)
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| server_id | TEXT PK | FK to `servers(id)`, `ON DELETE CASCADE` |
+| key_type | TEXT | e.g. `ssh-ed25519` |
+| fingerprint | TEXT | must start with `SHA256:` |
+| trusted_at | INTEGER | Unix epoch milliseconds |
 ## Milestone status
 
 - Milestone 1: UI shell, routing, theming, demo data.
-- Milestone 2: local server profiles, SQLite, credential store. No SSH connections yet.
-- Future: SSH, terminal, Docker, live monitoring, Go agent.
+- Milestone 2: local server profiles, SQLite, credential store.
+- Milestone 3: SSH connection test with host key verification (no terminal or commands).
+- Future: terminal, Docker, live monitoring, Go agent.

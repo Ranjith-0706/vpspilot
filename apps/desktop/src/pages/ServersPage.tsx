@@ -5,9 +5,11 @@ import { Button } from "../components/Field";
 import { Dialog } from "../components/Dialog";
 import { ServerForm, type ServerFormSubmit } from "../components/servers/ServerForm";
 import { ConnectionBadge, ServerDetails } from "../components/servers/ServerDetails";
+import { ConnectionTestPanel } from "../components/servers/ConnectionTestPanel";
+import { outcomeView } from "../services/connectionTest";
 import { useServers } from "../hooks/useServers";
 import { serversApi, toAppError } from "../services/serversApi";
-import type { ServerProfile } from "../types/servers";
+import type { ConnectionTestResult, ServerProfile } from "../types/servers";
 
 type Modal = { kind: "add" } | { kind: "edit"; id: string } | { kind: "delete"; id: string } | null;
 
@@ -16,8 +18,19 @@ export default function ServersPage() {
   const [modal, setModal] = useState<Modal>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Test results live only in memory for this session; they are not persisted.
+  const [tests, setTests] = useState<Record<string, ConnectionTestResult>>({});
+
+  const setTest = (id: string, result: ConnectionTestResult | undefined) =>
+    setTests((prev) => {
+      const next = { ...prev };
+      if (result) next[id] = result;
+      else delete next[id];
+      return next;
+    });
 
   const servers = state.status === "ready" ? state.servers : [];
+  const hostKeys = state.status === "ready" ? state.hostKeys : {};
   const find = (id: string | undefined) => servers.find((s) => s.id === id);
   const selected = find(selectedId ?? undefined);
   const modalServer = modal && modal.kind !== "add" ? find(modal.id) : undefined;
@@ -36,6 +49,7 @@ export default function ServersPage() {
         `"${saved.name}" was saved, but its credential could not be updated: ${toAppError(err).message}`,
       );
     }
+    setTest(saved.id, undefined); // an edit may have changed what a previous result referred to
     setModal(null);
     setSelectedId(saved.id);
     await reload();
@@ -55,7 +69,7 @@ export default function ServersPage() {
     <>
       <PageHeader
         title="Servers"
-        subtitle="Your saved server profiles. Connections are not implemented yet."
+        subtitle="Your saved server profiles. You can test a server's login; persistent connections are not implemented yet."
         actions={addButton}
       />
 
@@ -109,7 +123,9 @@ export default function ServersPage() {
 
       {state.status === "ready" && servers.length > 0 && (
         <div className={`grid gap-6 ${selected ? "xl:grid-cols-[1fr_22rem]" : ""}`}>
-          <Table headers={["Name", "Host", "User", "Auth", "Connection", "Credential", ""]}>
+          <Table
+            headers={["Name", "Host", "User", "Auth", "Connection", "Last test", "Credential", ""]}
+          >
             {servers.map((s) => (
               <tr key={s.id} className={s.id === selectedId ? "bg-accent/5" : ""}>
                 <td className="px-4 py-3 font-medium">{s.name}</td>
@@ -120,6 +136,15 @@ export default function ServersPage() {
                 <td className="px-4 py-3">{s.authMethod === "ssh_key" ? "SSH key" : "Password"}</td>
                 <td className="px-4 py-3">
                   <ConnectionBadge />
+                </td>
+                <td className="px-4 py-3">
+                  {tests[s.id] ? (
+                    <Badge tone={outcomeView(tests[s.id]!.outcome).tone}>
+                      {outcomeView(tests[s.id]!.outcome).label}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted">Not tested</span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   {s.credentialRef ? (
@@ -147,6 +172,16 @@ export default function ServersPage() {
           </Table>
           {selected && (
             <ServerDetails
+              extra={
+                <ConnectionTestPanel
+                  key={selected.id}
+                  server={selected}
+                  hostKey={hostKeys[selected.id]}
+                  result={tests[selected.id]}
+                  onResult={(r) => setTest(selected.id, r)}
+                  onChanged={reload}
+                />
+              }
               server={selected}
               onClose={() => setSelectedId(null)}
               onEdit={() => setModal({ kind: "edit", id: selected.id })}
@@ -173,6 +208,7 @@ export default function ServersPage() {
           onDeleted={async () => {
             setModal(null);
             if (selectedId === modalServer.id) setSelectedId(null);
+            setTest(modalServer.id, undefined);
             await reload();
           }}
         />
