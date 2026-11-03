@@ -1,0 +1,177 @@
+// ALL DATA IN THIS FOLDER IS DEMO DATA FOR UI DEVELOPMENT ONLY.
+// Hostnames use the reserved .example TLD; nothing here is real.
+import type { AlertItem, Container, DemoServer, LogEntry } from "../types";
+
+export const mockServers: DemoServer[] = [
+  {
+    id: "s1",
+    name: "web-01",
+    host: "web-01.example",
+    region: "Frankfurt",
+    os: "Ubuntu 24.04",
+    status: "online",
+    cpuPercent: 34,
+    ramPercent: 58,
+    diskPercent: 41,
+    uptime: "42d 6h",
+  },
+  {
+    id: "s2",
+    name: "db-01",
+    host: "db-01.example",
+    region: "Frankfurt",
+    os: "Debian 12",
+    status: "warning",
+    cpuPercent: 78,
+    ramPercent: 86,
+    diskPercent: 72,
+    uptime: "118d 2h",
+  },
+  {
+    id: "s3",
+    name: "cache-01",
+    host: "cache-01.example",
+    region: "Amsterdam",
+    os: "Ubuntu 22.04",
+    status: "online",
+    cpuPercent: 12,
+    ramPercent: 31,
+    diskPercent: 18,
+    uptime: "9d 14h",
+  },
+  {
+    id: "s4",
+    name: "staging-01",
+    host: "staging-01.example",
+    region: "Singapore",
+    os: "Rocky Linux 9",
+    status: "offline",
+    cpuPercent: 0,
+    ramPercent: 0,
+    diskPercent: 0,
+    uptime: "-",
+  },
+];
+
+export const mockContainers: Container[] = [
+  {
+    id: "c1",
+    name: "nginx",
+    image: "nginx:1.27",
+    state: "running",
+    ports: "80, 443",
+    uptime: "12d",
+  },
+  {
+    id: "c2",
+    name: "api",
+    image: "example/api:2.4.1",
+    state: "running",
+    ports: "8080",
+    uptime: "3d",
+  },
+  {
+    id: "c3",
+    name: "worker",
+    image: "example/worker:2.4.1",
+    state: "restarting",
+    ports: "-",
+    uptime: "2m",
+  },
+  {
+    id: "c4",
+    name: "postgres",
+    image: "postgres:16",
+    state: "running",
+    ports: "5432",
+    uptime: "40d",
+  },
+  {
+    id: "c5",
+    name: "migrate",
+    image: "example/api:2.4.1",
+    state: "exited",
+    ports: "-",
+    uptime: "-",
+  },
+];
+
+export const mockLogs: LogEntry[] = [
+  {
+    id: "l1",
+    timestamp: "2026-11-03 09:14:02",
+    level: "info",
+    source: "nginx",
+    message: "GET /health 200 2ms",
+  },
+  {
+    id: "l2",
+    timestamp: "2026-11-03 09:14:09",
+    level: "warn",
+    source: "postgres",
+    message: "checkpoints are occurring too frequently",
+  },
+  {
+    id: "l3",
+    timestamp: "2026-11-03 09:14:21",
+    level: "error",
+    source: "worker",
+    message: "job 4821 failed: connection reset by peer",
+  },
+  {
+    id: "l4",
+    timestamp: "2026-11-03 09:14:33",
+    level: "debug",
+    source: "api",
+    message: "cache miss for key user:1042",
+  },
+  {
+    id: "l5",
+    timestamp: "2026-11-03 09:14:47",
+    level: "info",
+    source: "sshd",
+    message: "session opened for user deploy",
+  },
+  {
+    id: "l6",
+    timestamp: "2026-11-03 09:15:01",
+    level: "error",
+    source: "worker",
+    message: "job 4822 failed: timeout after 30s",
+  },
+];
+
+export const mockAlerts: AlertItem[] = [
+  {
+    id: "a1",
+    severity: "critical",
+    title: "Server unreachable",
+    server: "staging-01",
+    time: "12 min ago",
+    resolved: false,
+  },
+  {
+    id: "a2",
+    severity: "warning",
+    title: "RAM usage above 85%",
+    server: "db-01",
+    time: "35 min ago",
+    resolved: false,
+  },
+  {
+    id: "a3",
+    severity: "warning",
+    title: "Container restarting repeatedly",
+    server: "web-01",
+    time: "1 h ago",
+    resolved: false,
+  },
+  {
+    id: "a4",
+    severity: "info",
+    title: "Disk usage back below 70%",
+    server: "cache-01",
+    time: "yesterday",
+    resolved: true,
+  },
+];

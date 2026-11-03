@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Minimal capability for the main window: only the listed app commands",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-get-app-info",
+    "allow-list-servers",
+    "allow-add-server",
+    "allow-update-server",
+    "allow-delete-server",
+    "allow-set-server-credential",
+    "allow-clear-server-credential"
+  ]
+}
