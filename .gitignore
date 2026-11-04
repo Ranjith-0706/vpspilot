@@ -1,0 +1,12 @@
+node_modules/
+dist/
+target/
+apps/desktop/src-tauri/gen/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/

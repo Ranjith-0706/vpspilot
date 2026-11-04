@@ -1,0 +1,468 @@
+//! End-to-end tests of the connection test against an in-process SSH server on localhost.
+
+use super::client::{AuthSecret, ConnectionTestResult, Outcome, TestParams, run_test};
+use super::hostkey::HostKeyRecord;
+use russh::keys::ssh_key::LineEnding;
+use russh::keys::{Algorithm, HashAlg, PrivateKey, PublicKey};
+use russh::server::{self, Auth, Msg, Server as _, Session, VerifiedPublicKey};
+use russh::{Channel, ChannelId};
+use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::net::TcpListener;
+
+const USER: &str = "deploy";
+const PASSWORD: &str = "correct-pw";
+
+#[derive(Clone)]
+struct TestServer {
+    allowed_key: Option<PublicKey>,
+    attempts: Arc<AtomicUsize>,
+    /// Overrides what a monitoring exec returns (default: a realistic sample).
+    exec_output: Option<String>,
+    /// What the server observed on the shell channel (pty size, resizes, ...).
+    log: Arc<Mutex<Vec<String>>>,
+    /// How the Docker listing command is answered.
+    docker: DockerReply,
+    /// How a container logs request is answered.
+    logs: DockerReply,
+}
+
+/// What the test server does when asked to list Docker containers.
+#[derive(Clone)]
+pub(super) struct DockerReply {
+    pub(super) stdout: String,
+    pub(super) stderr: String,
+    pub(super) exit: u32,
+}
+
+impl DockerReply {
+    pub(super) fn ok(stdout: &str) -> Self {
+        Self {
+            stdout: stdout.into(),
+            stderr: String::new(),
+            exit: 0,
+        }
+    }
+
+    pub(super) fn failing(exit: u32, stderr: &str) -> Self {
+        Self {
+            stdout: String::new(),
+            stderr: stderr.into(),
+            exit,
+        }
+    }
+}
+
+impl Default for DockerReply {
+    fn default() -> Self {
+        Self::ok(super::docker::parse::SAMPLE_OUTPUT)
+    }
+}
+
+impl server::Server for TestServer {
+    type Handler = Self;
+    fn new_client(&mut self, _: Option<SocketAddr>) -> Self {
+        self.clone()
+    }
+}
+
+impl server::Handler for TestServer {
+    type Error = russh::Error;
+
+    async fn channel_open_session(
+        &mut self,
+        _channel: Channel<Msg>,
+        reply: server::ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn pty_request(
+        &mut self,
+        channel: ChannelId,
+        term: &str,
+        cols: u32,
+        rows: u32,
+        _pix_w: u32,
+        _pix_h: u32,
+        _modes: &[(russh::Pty, u32)],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        self.log
+            .lock()
+            .unwrap()
+            .push(format!("pty {term} {cols}x{rows}"));
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        session.data(channel, &b"welcome\r\n"[..])?;
+        Ok(())
+    }
+
+    async fn window_change_request(
+        &mut self,
+        channel: ChannelId,
+        cols: u32,
+        rows: u32,
+        _pix_w: u32,
+        _pix_h: u32,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        self.log
+            .lock()
+            .unwrap()
+            .push(format!("resize {cols}x{rows}"));
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    /// Echoes input back with a prefix; the line "exit" ends the shell.
+    async fn data(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if data == b"exit\n" {
+            session.eof(channel)?;
+            session.close(channel)?;
+        } else {
+            let mut out = b"echo:".to_vec();
+            out.extend_from_slice(data);
+            session.data(channel, out)?;
+        }
+        Ok(())
+    }
+
+    /// Records every exec request. Only the monitoring command is answered; anything else is
+    /// refused, so tests can prove nothing else was ever requested.
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let cmd = String::from_utf8_lossy(data).to_string();
+        self.log.lock().unwrap().push(format!("exec:{cmd}"));
+        if cmd == super::monitor::parse::COMMAND {
+            session.channel_success(channel)?;
+            let out = self
+                .exec_output
+                .clone()
+                .unwrap_or_else(|| super::monitor::parse::SAMPLE_OUTPUT.to_string());
+            session.data(channel, out.into_bytes())?;
+            session.exit_status_request(channel, 0)?;
+            session.eof(channel)?;
+            session.close(channel)?;
+        } else if cmd == super::docker::parse::COMMAND
+            || cmd.starts_with(super::docker::logs::COMMAND_PREFIX)
+        {
+            session.channel_success(channel)?;
+            let reply = if cmd == super::docker::parse::COMMAND {
+                self.docker.clone()
+            } else {
+                self.logs.clone()
+            };
+            if !reply.stdout.is_empty() {
+                session.data(channel, reply.stdout.into_bytes())?;
+            }
+            if !reply.stderr.is_empty() {
+                session.extended_data(channel, 1, reply.stderr.into_bytes())?;
+            }
+            session.exit_status_request(channel, reply.exit)?;
+            session.eof(channel)?;
+            session.close(channel)?;
+        } else {
+            session.channel_failure(channel)?;
+        }
+        Ok(())
+    }
+
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        self.attempts.fetch_add(1, Ordering::SeqCst);
+        Ok(if user == USER && password == PASSWORD {
+            Auth::Accept
+        } else {
+            Auth::reject()
+        })
+    }
+
+    async fn auth_publickey(
+        &mut self,
+        user: &str,
+        key: VerifiedPublicKey<'_>,
+    ) -> Result<Auth, Self::Error> {
+        self.attempts.fetch_add(1, Ordering::SeqCst);
+        let ok = user == USER && self.allowed_key.as_ref() == Some(key.public_key);
+        Ok(if ok { Auth::Accept } else { Auth::reject() })
+    }
+}
+
+pub(super) fn new_key() -> PrivateKey {
+    PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap()
+}
+
+pub(super) fn fingerprint(key: &PrivateKey) -> String {
+    key.public_key().fingerprint(HashAlg::Sha256).to_string()
+}
+
+fn openssh_pem(key: &PrivateKey) -> String {
+    key.to_openssh(LineEnding::LF).unwrap().to_string()
+}
+
+pub(super) struct Running {
+    pub(super) port: u16,
+    pub(super) host_key: PrivateKey,
+    pub(super) attempts: Arc<AtomicUsize>,
+    pub(super) log: Arc<Mutex<Vec<String>>>,
+}
+
+pub(super) async fn start_server(allowed_key: Option<PublicKey>) -> Running {
+    start_server_with_exec(allowed_key, None).await
+}
+
+pub(super) async fn start_server_with_exec(
+    allowed_key: Option<PublicKey>,
+    exec_output: Option<String>,
+) -> Running {
+    start_server_full(
+        allowed_key,
+        exec_output,
+        DockerReply::default(),
+        default_logs(),
+    )
+    .await
+}
+
+pub(super) async fn start_server_with_docker(docker: DockerReply) -> Running {
+    start_server_full(None, None, docker, default_logs()).await
+}
+
+pub(super) async fn start_server_with_logs(logs: DockerReply) -> Running {
+    start_server_full(None, None, DockerReply::default(), logs).await
+}
+
+/// Realistic log output, for tests that do not care what the logs say.
+pub(super) fn default_logs() -> DockerReply {
+    DockerReply::ok(super::docker::logs::SAMPLE_LOGS)
+}
+
+async fn start_server_full(
+    allowed_key: Option<PublicKey>,
+    exec_output: Option<String>,
+    docker: DockerReply,
+    logs: DockerReply,
+) -> Running {
+    let host_key = new_key();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let config = Arc::new(server::Config {
+        keys: vec![host_key.clone()],
+        auth_rejection_time: Duration::from_millis(10),
+        auth_rejection_time_initial: Some(Duration::ZERO),
+        ..Default::default()
+    });
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let mut srv = TestServer {
+        allowed_key,
+        attempts: attempts.clone(),
+        exec_output,
+        log: log.clone(),
+        docker,
+        logs,
+    };
+    tokio::spawn(async move {
+        let running = srv.run_on_socket(config, &listener);
+        let _ = running.await;
+    });
+    Running {
+        port,
+        host_key,
+        attempts,
+        log,
+    }
+}
+
+pub(super) fn stored(fp: &str) -> Option<HostKeyRecord> {
+    Some(HostKeyRecord {
+        server_id: "s".into(),
+        key_type: "ssh-ed25519".into(),
+        fingerprint: fp.into(),
+        trusted_at: 0,
+    })
+}
+
+pub(super) fn params(port: u16, auth: AuthSecret, stored: Option<HostKeyRecord>) -> TestParams {
+    TestParams {
+        host: "127.0.0.1".into(),
+        port,
+        username: USER.into(),
+        auth,
+        stored,
+        timeout: Duration::from_secs(10),
+    }
+}
+
+async fn run(p: TestParams) -> ConnectionTestResult {
+    run_test(p).await
+}
+
+#[tokio::test]
+async fn unknown_host_key_stops_before_any_credential_is_sent() {
+    let s = start_server(None).await;
+    let r = run(params(s.port, AuthSecret::Password(PASSWORD.into()), None)).await;
+    assert_eq!(r.outcome, Outcome::HostKeyUnknown);
+    let seen = r.host_key.expect("fingerprint is reported");
+    assert_eq!(seen.fingerprint, fingerprint(&s.host_key));
+    assert_eq!(seen.key_type, "ssh-ed25519");
+    assert_eq!(
+        s.attempts.load(Ordering::SeqCst),
+        0,
+        "no credential may be sent to an untrusted host"
+    );
+}
+
+#[tokio::test]
+async fn trusted_key_and_correct_password_succeeds() {
+    let s = start_server(None).await;
+    let fp = fingerprint(&s.host_key);
+    let r = run(params(
+        s.port,
+        AuthSecret::Password(PASSWORD.into()),
+        stored(&fp),
+    ))
+    .await;
+    assert_eq!(r.outcome, Outcome::Success, "{}", r.message);
+    assert!(r.latency_ms.is_some());
+    assert_eq!(s.attempts.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn wrong_password_is_auth_failed() {
+    let s = start_server(None).await;
+    let fp = fingerprint(&s.host_key);
+    let r = run(params(
+        s.port,
+        AuthSecret::Password("nope".into()),
+        stored(&fp),
+    ))
+    .await;
+    assert_eq!(r.outcome, Outcome::AuthFailed);
+    assert!(r.latency_ms.is_none());
+}
+
+#[tokio::test]
+async fn changed_host_key_is_refused_before_authentication() {
+    let s = start_server(None).await;
+    let old = fingerprint(&new_key()); // the key we "trusted" earlier
+    let r = run(params(
+        s.port,
+        AuthSecret::Password(PASSWORD.into()),
+        stored(&old),
+    ))
+    .await;
+    assert_eq!(r.outcome, Outcome::HostKeyChanged);
+    assert_eq!(r.expected_fingerprint.as_deref(), Some(old.as_str()));
+    assert_eq!(r.host_key.unwrap().fingerprint, fingerprint(&s.host_key));
+    assert_eq!(s.attempts.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn private_key_auth_succeeds_and_wrong_key_fails() {
+    let client_key = new_key();
+    let s = start_server(Some(client_key.public_key().clone())).await;
+    let fp = fingerprint(&s.host_key);
+
+    let ok = run(params(
+        s.port,
+        AuthSecret::PrivateKey(openssh_pem(&client_key)),
+        stored(&fp),
+    ))
+    .await;
+    assert_eq!(ok.outcome, Outcome::Success, "{}", ok.message);
+
+    let bad = run(params(
+        s.port,
+        AuthSecret::PrivateKey(openssh_pem(&new_key())),
+        stored(&fp),
+    ))
+    .await;
+    assert_eq!(bad.outcome, Outcome::AuthFailed);
+}
+
+#[tokio::test]
+async fn unreadable_private_key_reports_error_without_echoing_it() {
+    let s = start_server(None).await;
+    let fp = fingerprint(&s.host_key);
+    let garbage = "not-a-key-SECRETMARKER";
+    let r = run(params(
+        s.port,
+        AuthSecret::PrivateKey(garbage.into()),
+        stored(&fp),
+    ))
+    .await;
+    assert_eq!(r.outcome, Outcome::Error);
+    assert!(!r.message.contains("SECRETMARKER"));
+    assert_eq!(s.attempts.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn trusted_host_without_credential_reports_no_credential() {
+    let s = start_server(None).await;
+    let fp = fingerprint(&s.host_key);
+    let r = run(params(s.port, AuthSecret::None, stored(&fp))).await;
+    assert_eq!(r.outcome, Outcome::NoCredential);
+    assert_eq!(s.attempts.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn closed_port_is_unreachable() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let r = run(params(port, AuthSecret::Password("x".into()), None)).await;
+    assert_eq!(r.outcome, Outcome::Unreachable, "{}", r.message);
+}
+
+#[tokio::test]
+async fn silent_server_times_out() {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let _held = listener.accept().await; // accept, then never speak
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    });
+    let mut p = params(port, AuthSecret::Password("x".into()), None);
+    p.timeout = Duration::from_millis(400);
+    let r = run(p).await;
+    assert_eq!(r.outcome, Outcome::Timeout);
+}
+
+#[tokio::test]
+async fn result_json_is_camel_case_and_contains_no_secret() {
+    let s = start_server(None).await;
+    let fp = fingerprint(&s.host_key);
+    let r = run(params(
+        s.port,
+        AuthSecret::Password(PASSWORD.into()),
+        stored(&fp),
+    ))
+    .await;
+    let json = serde_json::to_string(&r).unwrap();
+    assert!(json.contains("\"outcome\":\"success\""));
+    assert!(json.contains("\"latencyMs\""));
+    assert!(json.contains("\"testedAt\""));
+    assert!(!json.contains(PASSWORD));
+}
