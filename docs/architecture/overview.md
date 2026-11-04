@@ -25,8 +25,8 @@ VPSPilot is a Tauri 2 desktop app.
   `servers/service.rs` (use-cases) -> `commands/servers.rs` (thin Tauri wrappers). `credentials.rs`
   holds the `CredentialStore` trait and the Windows Credential Manager implementation.
 - Validation runs in both the frontend (`services/serverValidation.ts`) and Rust; Rust is authoritative.
-- Demo data lives in `src/demo/` and is only used by the Dashboard (in its labeled demo section)
-  and the Logs page. Alerts (Milestone 6) and Docker (Milestone 7) are real.
+- Demo data lives in `src/demo/` and is only used by the Dashboard, in its labeled demo section.
+  Every page is otherwise real: Alerts (Milestone 6), Docker (7) and Logs (8).
   The Servers page shows real saved profiles only.
 
 ### servers table
@@ -175,9 +175,40 @@ A read-only list of a server's containers, loaded on demand from the Docker page
   `daemon_unavailable` and `error` come back as a normal result; an untrusted host key, login
   failure or unreachable server is an error, like every other SSH feature.
 - **Not stored:** nothing is persisted. The list is kept in memory for the session.
-- **Not supported yet:** starting, stopping or restarting containers, logs, per-container CPU and
+- **Not supported yet:** starting, stopping or restarting containers, per-container CPU and
   memory, images, volumes and networks, Docker Compose projects, Podman, and servers that need
   `sudo docker`.
+
+## Container logs (Milestone 8)
+
+The last lines of one container's output, loaded on demand from the Logs page (also reachable
+from a "View logs" link on each Docker row). It uses the same trust, login and failure rules as
+the Docker list: one login per load, no retry, no sudo, and one Docker request per server at a
+time (the list and logs share that slot).
+
+- **The only command built from input.** Everything else VPSPilot runs is a constant. This one is
+  `docker logs --timestamps --tail <N> <id> 2>&1`, wrapped in `sh -c` after the same
+  `command -v docker` check, and it contains exactly two request-controlled values, both
+  validated before anything else happens (`LogsRequest::new`, the only way to build the command):
+  - the container id must be 12 to 64 lowercase hexadecimal characters, so it cannot start with
+    `-`, or contain a space, quote, `;`, `$` or any other shell character (Unicode look-alikes
+    included);
+  - the line count must be a number from 1 to 1000.
+  Tests assert the exact command string, that it has only the wrapper's two quotes, and that a
+  long list of injection attempts is rejected. The request is rejected before the database or the
+  network is touched.
+- **Log text is untrusted program output.** Terminal escape sequences (colors, cursor movement,
+  window titles, hyperlinks) are removed, other control characters are dropped, tabs become
+  spaces, lines are cut at 2000 characters, and at most the newest 1000 lines are kept. Output
+  over 4 MiB is an error. Text is shown as plain text, never as HTML. Errors never echo it.
+- **Because stderr is merged into the output** (containers write errors there), the output of a
+  failed command is Docker's error text. It is used only to recognize known problems (container
+  not found, permission denied, daemon not running, Docker not installed) and is never shown.
+- **Level is a guess.** Docker records no log level, so the UI guesses one from the text (words
+  such as `error`, `warn`, `level=error`) and labels it as a guess. It will sometimes be wrong.
+- **Not stored:** logs are kept in memory for the session only.
+- **Not supported yet:** following logs live, downloading or copying, host (non-container) logs
+  such as `journalctl`, time-range queries, and stdout/stderr separation.
 
 ## Milestone status
 
@@ -188,5 +219,6 @@ A read-only list of a server's containers, loaded on demand from the Docker page
 - Milestone 5: live server monitoring over SSH.
 - Milestone 6: threshold alerts (rules, history, Alerts page).
 - Milestone 7: read-only Docker container list.
-- Future: container logs and actions, notifications, persisted metrics history, Go agent,
-  passphrase-protected keys.
+- Milestone 8: container logs.
+- Future: container actions, host logs, live log following, notifications, persisted metrics
+  history, Go agent, passphrase-protected keys.

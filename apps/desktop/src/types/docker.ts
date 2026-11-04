@@ -18,7 +18,13 @@ export interface DockerContainer {
 }
 
 export type DockerOutcome =
-  "ok" | "not_installed" | "permission_denied" | "daemon_unavailable" | "error";
+  | "ok"
+  | "not_installed"
+  | "permission_denied"
+  | "daemon_unavailable"
+  /** Logs only: the container no longer exists. */
+  | "container_not_found"
+  | "error";
 
 export interface DockerResult {
   outcome: DockerOutcome;
@@ -30,3 +36,25 @@ export interface DockerResult {
   /** Unix epoch milliseconds. */
   fetchedAt: number;
 }
+
+/** One log line. The text is untrusted program output with escape sequences already removed. */
+export interface LogLine {
+  /** Docker's RFC 3339 timestamp, when the line had one. */
+  time?: string;
+  message: string;
+}
+
+export interface LogsResult {
+  outcome: DockerOutcome;
+  /** Set when the outcome is not "ok". Always written by VPSPilot, never remote text. */
+  message?: string;
+  /** Oldest first. */
+  lines: LogLine[];
+  /** Older lines were dropped to stay within the limit. */
+  truncated: boolean;
+  /** Unix epoch milliseconds. */
+  fetchedAt: number;
+}
+
+/** A level worked out from the text of a line. Docker does not record one. */
+export type GuessedLevel = "error" | "warn" | "info" | "debug";

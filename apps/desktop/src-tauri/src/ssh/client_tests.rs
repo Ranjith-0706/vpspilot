@@ -25,6 +25,8 @@ struct TestServer {
     log: Arc<Mutex<Vec<String>>>,
     /// How the Docker listing command is answered.
     docker: DockerReply,
+    /// How a container logs request is answered.
+    logs: DockerReply,
 }
 
 /// What the test server does when asked to list Docker containers.
@@ -163,9 +165,15 @@ impl server::Handler for TestServer {
             session.exit_status_request(channel, 0)?;
             session.eof(channel)?;
             session.close(channel)?;
-        } else if cmd == super::docker::parse::COMMAND {
+        } else if cmd == super::docker::parse::COMMAND
+            || cmd.starts_with(super::docker::logs::COMMAND_PREFIX)
+        {
             session.channel_success(channel)?;
-            let reply = self.docker.clone();
+            let reply = if cmd == super::docker::parse::COMMAND {
+                self.docker.clone()
+            } else {
+                self.logs.clone()
+            };
             if !reply.stdout.is_empty() {
                 session.data(channel, reply.stdout.into_bytes())?;
             }
@@ -228,17 +236,33 @@ pub(super) async fn start_server_with_exec(
     allowed_key: Option<PublicKey>,
     exec_output: Option<String>,
 ) -> Running {
-    start_server_full(allowed_key, exec_output, DockerReply::default()).await
+    start_server_full(
+        allowed_key,
+        exec_output,
+        DockerReply::default(),
+        default_logs(),
+    )
+    .await
 }
 
 pub(super) async fn start_server_with_docker(docker: DockerReply) -> Running {
-    start_server_full(None, None, docker).await
+    start_server_full(None, None, docker, default_logs()).await
+}
+
+pub(super) async fn start_server_with_logs(logs: DockerReply) -> Running {
+    start_server_full(None, None, DockerReply::default(), logs).await
+}
+
+/// Realistic log output, for tests that do not care what the logs say.
+pub(super) fn default_logs() -> DockerReply {
+    DockerReply::ok(super::docker::logs::SAMPLE_LOGS)
 }
 
 async fn start_server_full(
     allowed_key: Option<PublicKey>,
     exec_output: Option<String>,
     docker: DockerReply,
+    logs: DockerReply,
 ) -> Running {
     let host_key = new_key();
     let attempts = Arc::new(AtomicUsize::new(0));
@@ -257,6 +281,7 @@ async fn start_server_full(
         exec_output,
         log: log.clone(),
         docker,
+        logs,
     };
     tokio::spawn(async move {
         let running = srv.run_on_socket(config, &listener);

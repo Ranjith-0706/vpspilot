@@ -74,6 +74,7 @@ pub fn run() {
             commands::alerts::clear_alert_events,
             commands::alerts::list_active_alerts,
             commands::docker::list_docker_containers,
+            commands::docker::get_container_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running VPSPilot");

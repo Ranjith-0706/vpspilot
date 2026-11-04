@@ -2,8 +2,10 @@
 
 use super::client::{AuthSecret, TestParams};
 use super::client_tests::{
-    DockerReply, Running, fingerprint, new_key, params, start_server_with_docker, stored,
+    DockerReply, Running, fingerprint, new_key, params, start_server_with_docker,
+    start_server_with_logs, stored,
 };
+use super::docker::logs::{self, LogsRequest, LogsResult};
 use super::docker::parse::{COMMAND, ContainerState, Health, MAX_CONTAINERS};
 use super::docker::{DockerOutcome, DockerResult, list_containers};
 use std::sync::atomic::Ordering;
@@ -204,5 +206,171 @@ async fn result_serializes_with_the_shape_the_frontend_expects() {
     assert_eq!(
         serde_json::to_value(&denied).unwrap()["outcome"],
         "permission_denied"
+    );
+}
+
+// ---- container logs -------------------------------------------------------------------------
+
+const CONTAINER: &str = "a1b2c3d4e5f6";
+
+fn request() -> LogsRequest {
+    LogsRequest::new(CONTAINER, 200).unwrap()
+}
+
+async fn fetch_logs(reply: DockerReply) -> (LogsResult, Running) {
+    let s = start_server_with_logs(reply).await;
+    let result = logs::fetch(trusted(&s), &request())
+        .await
+        .expect("reaches docker");
+    (result, s)
+}
+
+#[tokio::test]
+async fn fetches_logs_with_one_login_and_exactly_the_built_command() {
+    let (result, s) = fetch_logs(DockerReply::ok(logs::SAMPLE_LOGS)).await;
+
+    assert_eq!(result.outcome, DockerOutcome::Ok);
+    assert_eq!(result.message, None);
+    assert!(!result.truncated);
+    assert_eq!(result.lines.len(), 3);
+    assert_eq!(result.lines[0].message, "server listening on :8080");
+    assert_eq!(result.lines[1].message, "ERROR failed to reach db");
+
+    assert_eq!(execs(&s), vec![format!("exec:{}", request().command())]);
+    assert!(execs(&s)[0].contains(&format!("--tail 200 {CONTAINER} ")));
+    assert_eq!(s.attempts.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_container_with_no_logs_is_a_normal_empty_result() {
+    let (result, _s) = fetch_logs(DockerReply::ok("")).await;
+    assert_eq!(result.outcome, DockerOutcome::Ok);
+    assert!(result.lines.is_empty());
+}
+
+#[tokio::test]
+async fn terminal_escape_sequences_in_logs_never_reach_the_result() {
+    let evil =
+        "2026-11-04T10:00:00Z \u{1b}]0;pwned\u{7}\u{1b}[2J\u{1b}[31mred\u{1b}[0m\u{8}\u{7} ok\n";
+    let (result, _s) = fetch_logs(DockerReply::ok(evil)).await;
+    assert_eq!(result.lines[0].message, "red ok");
+    let json = serde_json::to_string(&result).unwrap();
+    assert!(!json.contains("pwned") && !json.contains("\\u001b"));
+}
+
+#[tokio::test]
+async fn log_problems_are_reported_without_echoing_remote_text() {
+    let cases = [
+        (127, "", DockerOutcome::NotInstalled),
+        (
+            1,
+            "Error response from daemon: No such container: a1b2c3d4e5f6 SECRET-DETAIL",
+            DockerOutcome::ContainerNotFound,
+        ),
+        (
+            1,
+            "permission denied while trying to connect SECRET-DETAIL",
+            DockerOutcome::PermissionDenied,
+        ),
+        (
+            1,
+            "Cannot connect to the Docker daemon at unix:///var/run/docker.sock SECRET-DETAIL",
+            DockerOutcome::DaemonUnavailable,
+        ),
+        (2, "boom SECRET-DETAIL", DockerOutcome::Error),
+    ];
+    for (exit, text, want) in cases {
+        // With `2>&1` an error arrives on stdout, so the test server sends it there.
+        let reply = DockerReply {
+            stdout: text.into(),
+            stderr: String::new(),
+            exit,
+        };
+        let (result, _s) = fetch_logs(reply).await;
+        assert_eq!(result.outcome, want, "exit {exit}");
+        assert!(result.lines.is_empty());
+        let message = result.message.expect("a message");
+        assert!(!message.contains("SECRET"), "{message}");
+        assert!(!message.contains("/var/run"), "{message}");
+    }
+}
+
+#[tokio::test]
+async fn oversized_logs_are_an_error_not_a_hang() {
+    let line = format!("2026-11-04T10:00:00Z {}\n", "x".repeat(1000));
+    let huge = line.repeat(5 * 1024);
+    let s = start_server_with_logs(DockerReply::ok(&huge)).await;
+    let err = logs::fetch(trusted(&s), &request()).await.unwrap_err();
+    assert!(err.contains("too much output"), "{err}");
+    assert!(!err.contains("xxxx"));
+}
+
+#[tokio::test]
+async fn logs_refuse_an_untrusted_host_without_touching_the_network() {
+    let s = start_server_with_logs(DockerReply::ok(logs::SAMPLE_LOGS)).await;
+    let p = params(s.port, AuthSecret::Password(PASSWORD.into()), None);
+    let err = logs::fetch(p, &request()).await.unwrap_err();
+    assert!(err.contains("not trusted"));
+    assert_eq!(s.attempts.load(Ordering::SeqCst), 0);
+    assert!(execs(&s).is_empty());
+}
+
+#[tokio::test]
+async fn logs_stop_after_one_failed_login_and_run_nothing() {
+    let s = start_server_with_logs(DockerReply::ok(logs::SAMPLE_LOGS)).await;
+    let p = params(
+        s.port,
+        AuthSecret::Password("wrong".into()),
+        stored(&fingerprint(&s.host_key)),
+    );
+    assert!(logs::fetch(p, &request()).await.is_err());
+    assert_eq!(s.attempts.load(Ordering::SeqCst), 1, "no retry");
+    assert!(execs(&s).is_empty());
+}
+
+#[tokio::test]
+async fn logs_fail_on_a_changed_host_key_before_any_credential_is_sent() {
+    let s = start_server_with_logs(DockerReply::ok(logs::SAMPLE_LOGS)).await;
+    let p = params(
+        s.port,
+        AuthSecret::Password(PASSWORD.into()),
+        stored(&fingerprint(&new_key())),
+    );
+    assert!(logs::fetch(p, &request()).await.is_err());
+    assert_eq!(s.attempts.load(Ordering::SeqCst), 0);
+    assert!(execs(&s).is_empty());
+}
+
+#[tokio::test]
+async fn another_container_and_line_count_change_only_those_two_values() {
+    let s = start_server_with_logs(DockerReply::ok(logs::SAMPLE_LOGS)).await;
+    let other = LogsRequest::new("0123456789ab", 5).unwrap();
+    let result = logs::fetch(trusted(&s), &other).await.unwrap();
+    assert_eq!(result.outcome, DockerOutcome::Ok);
+    let ran = execs(&s);
+    assert_eq!(ran.len(), 1);
+    assert!(ran[0].contains("--tail 5 0123456789ab "));
+}
+
+#[tokio::test]
+async fn logs_result_serializes_with_the_shape_the_frontend_expects() {
+    let (result, _s) = fetch_logs(DockerReply::ok(logs::SAMPLE_LOGS)).await;
+    let json = serde_json::to_value(&result).unwrap();
+    assert_eq!(json["outcome"], "ok");
+    assert!(json.get("message").is_none());
+    assert_eq!(json["truncated"], false);
+    assert!(json["fetchedAt"].is_i64());
+    assert_eq!(json["lines"][0]["time"], "2026-11-04T10:00:00.123456789Z");
+    assert_eq!(json["lines"][0]["message"], "server listening on :8080");
+
+    let (gone, _s) = fetch_logs(DockerReply {
+        stdout: "No such container".into(),
+        stderr: String::new(),
+        exit: 1,
+    })
+    .await;
+    assert_eq!(
+        serde_json::to_value(&gone).unwrap()["outcome"],
+        "container_not_found"
     );
 }

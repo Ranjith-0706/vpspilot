@@ -186,7 +186,7 @@ export default function DockerPage() {
                   <p className="text-sm text-muted">No containers match that filter.</p>
                 </Card>
               ) : (
-                <Table headers={["Name", "Image", "State", "Status", "Ports"]}>
+                <Table headers={["Name", "Image", "State", "Status", "Ports", ""]}>
                   {shown.map((c) => (
                     <tr key={c.id}>
                       <td className="px-4 py-3">
@@ -203,6 +203,19 @@ export default function DockerPage() {
                       <td className="px-4 py-3 text-muted">{c.status}</td>
                       <td className="max-w-64 break-words px-4 py-3 text-xs text-muted">
                         {c.ports || "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <Link
+                          to={`${ROUTES.logs.path}?${new URLSearchParams({
+                            server: server.id,
+                            container: c.id,
+                            name: c.name,
+                          }).toString()}`}
+                          aria-label={`View logs of ${c.name}`}
+                          className="rounded px-2 py-1 text-xs font-medium text-accent hover:bg-surface-2"
+                        >
+                          View logs
+                        </Link>
                       </td>
                     </tr>
                   ))}

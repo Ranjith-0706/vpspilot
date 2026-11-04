@@ -4,9 +4,9 @@ Open-source VPS monitoring and management desktop app with Docker insights and a
 
 > **Status:** Early development. Working today: saved server profiles (credentials in the OS
 > credential store), SSH connection test with host key verification, an interactive SSH terminal,
-> live CPU/memory/disk monitoring, threshold alerts, and a read-only Docker container list.
-> Everything is agentless over SSH and Linux-only for monitoring and Docker. The Logs page and the
-> sample section on the Dashboard still use clearly-labeled mock data. See
+> live CPU/memory/disk monitoring, threshold alerts, a read-only Docker container list, and
+> container logs. Everything is agentless over SSH and Linux-only for monitoring and Docker. Only
+> the sample section on the Dashboard still uses clearly-labeled mock data. See
 > [docs/architecture/overview.md](docs/architecture/overview.md) for what is and is not supported.
 
 ## Stack

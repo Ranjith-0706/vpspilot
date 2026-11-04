@@ -29,6 +29,7 @@
     "allow-list-alert-events",
     "allow-clear-alert-events",
     "allow-list-active-alerts",
-    "allow-list-docker-containers"
+    "allow-list-docker-containers",
+    "allow-get-container-logs"
   ]
 }
