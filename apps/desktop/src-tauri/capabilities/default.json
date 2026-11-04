@@ -28,6 +28,7 @@
     "allow-delete-alert-rule",
     "allow-list-alert-events",
     "allow-clear-alert-events",
-    "allow-list-active-alerts"
+    "allow-list-active-alerts",
+    "allow-list-docker-containers"
   ]
 }

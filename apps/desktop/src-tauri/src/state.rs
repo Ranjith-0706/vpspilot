@@ -5,7 +5,7 @@ use crate::ssh::monitor::MonitorHandle;
 use crate::ssh::service::PendingKeys;
 use crate::ssh::terminal::TerminalHandle;
 use rusqlite::Connection;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 pub type TerminalSessions = Arc<Mutex<HashMap<String, TerminalHandle>>>;
@@ -17,6 +17,34 @@ pub struct MonitorEntry {
 }
 
 pub type MonitorRegistry = Arc<Mutex<HashMap<String, MonitorEntry>>>;
+
+/// Servers with a Docker listing in flight.
+pub type DockerBusy = Arc<Mutex<HashSet<String>>>;
+
+/// Held while a Docker listing runs for a server; releases it when dropped, however the request
+/// ends (success, error or cancellation).
+pub struct DockerGuard {
+    busy: DockerBusy,
+    id: String,
+}
+
+impl Drop for DockerGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.busy.lock() {
+            set.remove(&self.id);
+        }
+    }
+}
+
+fn claim_docker(busy: &DockerBusy, id: &str) -> Option<DockerGuard> {
+    if !busy.lock().ok()?.insert(id.to_string()) {
+        return None;
+    }
+    Some(DockerGuard {
+        busy: busy.clone(),
+        id: id.to_string(),
+    })
+}
 
 pub struct AppState {
     /// Holds the init error instead of a connection when the database could not be opened,
@@ -31,9 +59,16 @@ pub struct AppState {
     pub monitors: MonitorRegistry,
     /// What is firing right now. Never held across an await.
     pub alerts: Mutex<AlertEngine>,
+    /// Servers with a Docker listing in flight (at most one per server).
+    pub docker_busy: DockerBusy,
 }
 
 impl AppState {
+    /// Claims the Docker listing slot for a server, or `None` if one is already running.
+    pub fn begin_docker(&self, id: &str) -> Option<DockerGuard> {
+        claim_docker(&self.docker_busy, id)
+    }
+
     pub fn engine(&self) -> Result<MutexGuard<'_, AlertEngine>, AppError> {
         self.alerts
             .lock()
@@ -82,5 +117,29 @@ impl AppState {
         self.pending_host_keys
             .lock()
             .map_err(|_| AppError::internal("Host key state lock was poisoned."))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_one_docker_listing_per_server_at_a_time() {
+        let busy = DockerBusy::default();
+        let first = claim_docker(&busy, "s1");
+        assert!(first.is_some());
+        assert!(claim_docker(&busy, "s1").is_none(), "same server is busy");
+        assert!(
+            claim_docker(&busy, "s2").is_some(),
+            "other servers are independent"
+        );
+    }
+
+    #[test]
+    fn the_slot_is_released_when_the_guard_is_dropped() {
+        let busy = DockerBusy::default();
+        drop(claim_docker(&busy, "s1"));
+        assert!(claim_docker(&busy, "s1").is_some());
     }
 }

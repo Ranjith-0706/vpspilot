@@ -25,6 +25,7 @@ const COMMANDS: &[&str] = &[
     "list_alert_events",
     "clear_alert_events",
     "list_active_alerts",
+    "list_docker_containers",
 ];
 
 fn main() {

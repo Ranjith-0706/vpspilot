@@ -44,6 +44,7 @@ pub fn run() {
                 terminals: Default::default(),
                 monitors: Default::default(),
                 alerts: Default::default(),
+                docker_busy: Default::default(),
             });
             Ok(())
         })
@@ -72,6 +73,7 @@ pub fn run() {
             commands::alerts::list_alert_events,
             commands::alerts::clear_alert_events,
             commands::alerts::list_active_alerts,
+            commands::docker::list_docker_containers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running VPSPilot");

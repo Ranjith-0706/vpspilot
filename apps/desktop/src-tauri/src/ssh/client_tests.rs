@@ -23,6 +23,40 @@ struct TestServer {
     exec_output: Option<String>,
     /// What the server observed on the shell channel (pty size, resizes, ...).
     log: Arc<Mutex<Vec<String>>>,
+    /// How the Docker listing command is answered.
+    docker: DockerReply,
+}
+
+/// What the test server does when asked to list Docker containers.
+#[derive(Clone)]
+pub(super) struct DockerReply {
+    pub(super) stdout: String,
+    pub(super) stderr: String,
+    pub(super) exit: u32,
+}
+
+impl DockerReply {
+    pub(super) fn ok(stdout: &str) -> Self {
+        Self {
+            stdout: stdout.into(),
+            stderr: String::new(),
+            exit: 0,
+        }
+    }
+
+    pub(super) fn failing(exit: u32, stderr: &str) -> Self {
+        Self {
+            stdout: String::new(),
+            stderr: stderr.into(),
+            exit,
+        }
+    }
+}
+
+impl Default for DockerReply {
+    fn default() -> Self {
+        Self::ok(super::docker::parse::SAMPLE_OUTPUT)
+    }
 }
 
 impl server::Server for TestServer {
@@ -129,6 +163,18 @@ impl server::Handler for TestServer {
             session.exit_status_request(channel, 0)?;
             session.eof(channel)?;
             session.close(channel)?;
+        } else if cmd == super::docker::parse::COMMAND {
+            session.channel_success(channel)?;
+            let reply = self.docker.clone();
+            if !reply.stdout.is_empty() {
+                session.data(channel, reply.stdout.into_bytes())?;
+            }
+            if !reply.stderr.is_empty() {
+                session.extended_data(channel, 1, reply.stderr.into_bytes())?;
+            }
+            session.exit_status_request(channel, reply.exit)?;
+            session.eof(channel)?;
+            session.close(channel)?;
         } else {
             session.channel_failure(channel)?;
         }
@@ -182,6 +228,18 @@ pub(super) async fn start_server_with_exec(
     allowed_key: Option<PublicKey>,
     exec_output: Option<String>,
 ) -> Running {
+    start_server_full(allowed_key, exec_output, DockerReply::default()).await
+}
+
+pub(super) async fn start_server_with_docker(docker: DockerReply) -> Running {
+    start_server_full(None, None, docker).await
+}
+
+async fn start_server_full(
+    allowed_key: Option<PublicKey>,
+    exec_output: Option<String>,
+    docker: DockerReply,
+) -> Running {
     let host_key = new_key();
     let attempts = Arc::new(AtomicUsize::new(0));
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -198,6 +256,7 @@ pub(super) async fn start_server_with_exec(
         attempts: attempts.clone(),
         exec_output,
         log: log.clone(),
+        docker,
     };
     tokio::spawn(async move {
         let running = srv.run_on_socket(config, &listener);

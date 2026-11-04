@@ -1,5 +1,6 @@
 pub mod alerts;
 pub mod app_info;
+pub mod docker;
 pub mod monitor;
 pub mod servers;
 pub mod ssh;

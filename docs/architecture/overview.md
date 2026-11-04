@@ -25,8 +25,8 @@ VPSPilot is a Tauri 2 desktop app.
   `servers/service.rs` (use-cases) -> `commands/servers.rs` (thin Tauri wrappers). `credentials.rs`
   holds the `CredentialStore` trait and the Windows Credential Manager implementation.
 - Validation runs in both the frontend (`services/serverValidation.ts`) and Rust; Rust is authoritative.
-- Demo data lives in `src/demo/` and is only used by the Dashboard (in its labeled demo section), Docker and Logs pages. The Alerts
-  page is real as of Milestone 6.
+- Demo data lives in `src/demo/` and is only used by the Dashboard (in its labeled demo section)
+  and the Logs page. Alerts (Milestone 6) and Docker (Milestone 7) are real.
   The Servers page shows real saved profiles only.
 
 ### servers table
@@ -147,6 +147,38 @@ computed locally from the samples Milestone 5 already collects.
 - **Not supported yet:** desktop or email notifications, "server unreachable" alerts, per-process
   or network metrics, severity levels, snoozing, and alert state that survives a restart.
 
+## Docker containers (Milestone 7)
+
+A read-only list of a server's containers, loaded on demand from the Docker page.
+
+- **One fixed command** (`ssh::docker::parse::COMMAND`): `docker ps -a --format "{{json .}}"`
+  wrapped in `sh -c`, preceded by a `command -v docker` check. It takes no container name or
+  other argument, so nothing from the UI or the database can change it or be injected into it.
+  A test checks it has no quote, `$` or backtick in the script and none of `sudo`, `rm`, `kill`,
+  `stop`, `start`, `exec`, `run`, `pull` or `prune`, and that only `docker ps` appears.
+- **No sudo, ever.** The account must already be allowed to use Docker (usually the `docker`
+  group). If it is not, the page says so and how to fix it on the server. Note that membership in
+  the `docker` group is itself root-equivalent on that server; granting it is the server owner's
+  decision, not VPSPilot's.
+- **One login per load**: it signs in, runs the command and disconnects. There is no background
+  polling, and no retry on any failure, so it cannot trigger lockouts such as fail2ban. At most one
+  load per server runs at a time (a second request is refused while one is in flight).
+- **Same trust rules** as the terminal and monitor: it refuses, without any network access, unless
+  the host key is already trusted and a credential is stored, and a changed host key is a hard
+  failure.
+- **Remote output is untrusted:** capped at 4 MiB (and 8 KiB of error text), at most 500
+  containers, parsed strictly as one JSON object per line. Control characters are stripped and
+  every field is length-limited. Parse errors and Docker errors never show remote text: only
+  messages written by VPSPilot (not installed, permission denied, daemon not running, or a generic
+  exit status) are shown.
+- **Outcomes** are distinct from connection problems: `not_installed`, `permission_denied`,
+  `daemon_unavailable` and `error` come back as a normal result; an untrusted host key, login
+  failure or unreachable server is an error, like every other SSH feature.
+- **Not stored:** nothing is persisted. The list is kept in memory for the session.
+- **Not supported yet:** starting, stopping or restarting containers, logs, per-container CPU and
+  memory, images, volumes and networks, Docker Compose projects, Podman, and servers that need
+  `sudo docker`.
+
 ## Milestone status
 
 - Milestone 1: UI shell, routing, theming, demo data.
@@ -155,4 +187,6 @@ computed locally from the samples Milestone 5 already collects.
 - Milestone 4: interactive SSH terminal (xterm.js).
 - Milestone 5: live server monitoring over SSH.
 - Milestone 6: threshold alerts (rules, history, Alerts page).
-- Future: Docker, notifications, persisted metrics history, Go agent, passphrase-protected keys.
+- Milestone 7: read-only Docker container list.
+- Future: container logs and actions, notifications, persisted metrics history, Go agent,
+  passphrase-protected keys.
