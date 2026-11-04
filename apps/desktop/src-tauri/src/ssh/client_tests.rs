@@ -19,6 +19,8 @@ const PASSWORD: &str = "correct-pw";
 struct TestServer {
     allowed_key: Option<PublicKey>,
     attempts: Arc<AtomicUsize>,
+    /// Overrides what a monitoring exec returns (default: a realistic sample).
+    exec_output: Option<String>,
     /// What the server observed on the shell channel (pty size, resizes, ...).
     log: Arc<Mutex<Vec<String>>>,
 }
@@ -107,6 +109,32 @@ impl server::Handler for TestServer {
         Ok(())
     }
 
+    /// Records every exec request. Only the monitoring command is answered; anything else is
+    /// refused, so tests can prove nothing else was ever requested.
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let cmd = String::from_utf8_lossy(data).to_string();
+        self.log.lock().unwrap().push(format!("exec:{cmd}"));
+        if cmd == super::monitor::parse::COMMAND {
+            session.channel_success(channel)?;
+            let out = self
+                .exec_output
+                .clone()
+                .unwrap_or_else(|| super::monitor::parse::SAMPLE_OUTPUT.to_string());
+            session.data(channel, out.into_bytes())?;
+            session.exit_status_request(channel, 0)?;
+            session.eof(channel)?;
+            session.close(channel)?;
+        } else {
+            session.channel_failure(channel)?;
+        }
+        Ok(())
+    }
+
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         self.attempts.fetch_add(1, Ordering::SeqCst);
         Ok(if user == USER && password == PASSWORD {
@@ -147,6 +175,13 @@ pub(super) struct Running {
 }
 
 pub(super) async fn start_server(allowed_key: Option<PublicKey>) -> Running {
+    start_server_with_exec(allowed_key, None).await
+}
+
+pub(super) async fn start_server_with_exec(
+    allowed_key: Option<PublicKey>,
+    exec_output: Option<String>,
+) -> Running {
     let host_key = new_key();
     let attempts = Arc::new(AtomicUsize::new(0));
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -161,6 +196,7 @@ pub(super) async fn start_server(allowed_key: Option<PublicKey>) -> Running {
     let mut srv = TestServer {
         allowed_key,
         attempts: attempts.clone(),
+        exec_output,
         log: log.clone(),
     };
     tokio::spawn(async move {

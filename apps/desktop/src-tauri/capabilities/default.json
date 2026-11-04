@@ -19,6 +19,8 @@
     "allow-open-terminal",
     "allow-terminal-write",
     "allow-terminal-resize",
-    "allow-close-terminal"
+    "allow-close-terminal",
+    "allow-start-monitoring",
+    "allow-stop-monitoring"
   ]
 }

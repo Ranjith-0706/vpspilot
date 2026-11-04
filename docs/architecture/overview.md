@@ -88,10 +88,40 @@ rendered with xterm.js. Nothing runs on the local machine.
   a closed window or dropped channel ends the remote shell.
 - **Not supported yet:** passphrase-protected keys, multiple tabs, session logging, SFTP,
   scrollback persistence, reconnect-on-network-change.
+## Live monitoring (Milestone 5)
+
+The Dashboard shows real CPU, memory, disk, load and uptime for saved servers. Monitoring is
+**agentless**: nothing is installed on the server.
+
+- **One fixed command.** The only thing ever run is the constant `COMMAND` in
+  `ssh/monitor/parse.rs`: read-only (`/proc/stat`, `/proc/meminfo`, `df -P -k /`, `/proc/uptime`,
+  `/proc/loadavg`, `getconf`), no privileges, no `sudo`, wrapped in `sh -c` so it works with any
+  login shell. No part of it comes from the frontend or from stored data. A test asserts the script
+  contains no quotes, `$`, backticks, redirections or destructive commands, and the test SSH server
+  records that nothing else is ever requested.
+- **One persistent session per server** (not one login per poll), so the server's auth log shows a
+  single login. Default poll interval is 5 s (allowed 2-300 s); CPU is computed from two samples
+  one second apart.
+- **Same trust rules as the terminal:** it refuses to start unless the host key is trusted and a
+  credential is stored, and shares the connect/verify/authenticate code.
+- **No lockout risk.** Authentication, credential and host key failures stop the monitor
+  (`failed`) and are never retried. Only network problems (unreachable, timeout, connection dropped)
+  are retried, with exponential backoff from 5 s up to 60 s.
+- **Untrusted output.** Remote output is size-capped (64 KiB), parsed strictly and numerically, and
+  never echoed in error messages.
+- **Lifecycle.** Commands: `start_monitoring` (id + interval; restarting replaces the old monitor)
+  and `stop_monitoring`. Editing a server, changing its credential, or deleting it stops its
+  monitor. At most 20 monitors. Events stream over a Tauri `Channel`; the frontend keeps state in a
+  provider above the router so it survives page navigation. Samples are kept in memory only (last 60
+  per server) and are not stored in SQLite.
+- **Demo data** stays on the Dashboard in its own clearly labelled, hideable section.
+- **Not supported yet:** non-Linux servers, per-process stats, network/disk I/O, alert thresholds,
+  persisted history, Docker metrics.
 ## Milestone status
 
 - Milestone 1: UI shell, routing, theming, demo data.
 - Milestone 2: local server profiles, SQLite, credential store.
 - Milestone 3: SSH connection test with host key verification (no terminal or commands).
 - Milestone 4: interactive SSH terminal (xterm.js).
-- Future: Docker, live monitoring, Go agent, passphrase-protected keys.
+- Milestone 5: live server monitoring over SSH.
+- Future: Docker, alerts, persisted metrics history, Go agent, passphrase-protected keys.

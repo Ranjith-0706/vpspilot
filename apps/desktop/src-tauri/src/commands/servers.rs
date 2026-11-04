@@ -29,13 +29,18 @@ pub fn update_server(
     input: ServerInput,
 ) -> Result<ServerProfile, AppError> {
     let conn = state.conn()?;
-    service::update_server(&conn, state.credentials.as_ref(), &id, &input, now_ms())
+    let updated = service::update_server(&conn, state.credentials.as_ref(), &id, &input, now_ms())?;
+    // A running monitor holds the old connection details; make the user restart it.
+    state.stop_monitor(&id, "Server settings changed. Start monitoring again.");
+    Ok(updated)
 }
 
 #[tauri::command]
 pub fn delete_server(state: State<'_, AppState>, id: String) -> Result<(), AppError> {
     let conn = state.conn()?;
-    service::delete_server(&conn, state.credentials.as_ref(), &id)
+    service::delete_server(&conn, state.credentials.as_ref(), &id)?;
+    state.stop_monitor(&id, "Server was removed.");
+    Ok(())
 }
 
 /// Write-only: stores a secret in the OS credential store and records only its reference.
@@ -46,7 +51,10 @@ pub fn set_server_credential(
     secret: String,
 ) -> Result<ServerProfile, AppError> {
     let conn = state.conn()?;
-    service::set_credential(&conn, state.credentials.as_ref(), &id, &secret, now_ms())
+    let updated =
+        service::set_credential(&conn, state.credentials.as_ref(), &id, &secret, now_ms())?;
+    state.stop_monitor(&id, "Credential changed. Start monitoring again.");
+    Ok(updated)
 }
 
 #[tauri::command]
@@ -55,5 +63,7 @@ pub fn clear_server_credential(
     id: String,
 ) -> Result<ServerProfile, AppError> {
     let conn = state.conn()?;
-    service::clear_credential(&conn, state.credentials.as_ref(), &id, now_ms())
+    let updated = service::clear_credential(&conn, state.credentials.as_ref(), &id, now_ms())?;
+    state.stop_monitor(&id, "Credential removed.");
+    Ok(updated)
 }

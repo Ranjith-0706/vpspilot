@@ -1,5 +1,6 @@
 use crate::credentials::CredentialStore;
 use crate::error::AppError;
+use crate::ssh::monitor::MonitorHandle;
 use crate::ssh::service::PendingKeys;
 use crate::ssh::terminal::TerminalHandle;
 use rusqlite::Connection;
@@ -7,6 +8,14 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 pub type TerminalSessions = Arc<Mutex<HashMap<String, TerminalHandle>>>;
+
+/// A running monitor. `token` lets a finished monitor remove only its own registry entry.
+pub struct MonitorEntry {
+    pub token: String,
+    pub handle: MonitorHandle,
+}
+
+pub type MonitorRegistry = Arc<Mutex<HashMap<String, MonitorEntry>>>;
 
 pub struct AppState {
     /// Holds the init error instead of a connection when the database could not be opened,
@@ -17,6 +26,8 @@ pub struct AppState {
     pub pending_host_keys: Mutex<PendingKeys>,
     /// Open terminal sessions by id.
     pub terminals: TerminalSessions,
+    /// Running monitors by server id.
+    pub monitors: MonitorRegistry,
 }
 
 impl AppState {
@@ -37,6 +48,25 @@ impl AppState {
 
     pub fn terminal_sessions(&self) -> TerminalSessions {
         self.terminals.clone()
+    }
+
+    pub fn monitors(&self) -> Result<MutexGuard<'_, HashMap<String, MonitorEntry>>, AppError> {
+        self.monitors
+            .lock()
+            .map_err(|_| AppError::internal("Monitor state lock was poisoned."))
+    }
+
+    pub fn monitor_registry(&self) -> MonitorRegistry {
+        self.monitors.clone()
+    }
+
+    /// Stops monitoring a server (no-op if it is not monitored).
+    pub fn stop_monitor(&self, id: &str, reason: &str) {
+        if let Ok(mut map) = self.monitors.lock()
+            && let Some(entry) = map.remove(id)
+        {
+            entry.handle.stop(reason);
+        }
     }
 
     pub fn pending(&self) -> Result<MutexGuard<'_, PendingKeys>, AppError> {

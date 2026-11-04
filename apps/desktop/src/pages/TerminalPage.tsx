@@ -4,6 +4,7 @@ import { Card, PageHeader } from "../components/ui";
 import { Button, inputClass } from "../components/Field";
 import { TerminalView } from "../components/terminal/TerminalView";
 import { useServers } from "../hooks/useServers";
+import { connectionBlocker } from "../services/serverReadiness";
 import { ROUTES } from "../routes";
 
 export default function TerminalPage() {
@@ -17,13 +18,7 @@ export default function TerminalPage() {
   const selected = servers.find((s) => s.id === selectedId);
   const active = session ? servers.find((s) => s.id === session.serverId) : undefined;
 
-  const blocker = !selected
-    ? null
-    : !hostKeys[selected.id]
-      ? "This server's host key is not trusted yet. Run a connection test on the Servers page and trust the host key first."
-      : !selected.credentialRef
-        ? "No credential is stored for this server. Edit it on the Servers page to add one."
-        : null;
+  const blocker = selected ? connectionBlocker(selected, hostKeys[selected.id]) : null;
 
   return (
     <>

@@ -3,6 +3,9 @@ pub mod client;
 mod client_tests;
 pub mod hostkey;
 pub mod known_hosts;
+pub mod monitor;
+#[cfg(test)]
+mod monitor_tests;
 pub mod service;
 pub mod terminal;
 #[cfg(test)]

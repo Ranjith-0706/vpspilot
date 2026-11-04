@@ -16,6 +16,8 @@ const COMMANDS: &[&str] = &[
     "terminal_write",
     "terminal_resize",
     "close_terminal",
+    "start_monitoring",
+    "stop_monitoring",
 ];
 
 fn main() {
