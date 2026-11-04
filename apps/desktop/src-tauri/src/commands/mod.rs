@@ -1,3 +1,4 @@
+pub mod alerts;
 pub mod app_info;
 pub mod monitor;
 pub mod servers;

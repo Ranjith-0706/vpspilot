@@ -3,6 +3,7 @@
 //! Only narrowly-scoped, typed commands are exposed to the frontend.
 //! No generic shell execution is, or must ever be, exposed.
 
+mod alerts;
 mod commands;
 mod credentials;
 mod db;
@@ -42,6 +43,7 @@ pub fn run() {
                 pending_host_keys: Mutex::new(Default::default()),
                 terminals: Default::default(),
                 monitors: Default::default(),
+                alerts: Default::default(),
             });
             Ok(())
         })
@@ -63,6 +65,13 @@ pub fn run() {
             commands::terminal::close_terminal,
             commands::monitor::start_monitoring,
             commands::monitor::stop_monitoring,
+            commands::alerts::list_alert_rules,
+            commands::alerts::add_alert_rule,
+            commands::alerts::update_alert_rule,
+            commands::alerts::delete_alert_rule,
+            commands::alerts::list_alert_events,
+            commands::alerts::clear_alert_events,
+            commands::alerts::list_active_alerts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running VPSPilot");

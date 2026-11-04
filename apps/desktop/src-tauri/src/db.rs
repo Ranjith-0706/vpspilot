@@ -52,6 +52,37 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
         );
     ",
     },
+    Migration {
+        version: 3,
+        name: "create_alerts",
+        sql: "
+        CREATE TABLE alert_rules (
+            id          TEXT PRIMARY KEY NOT NULL,
+            server_id   TEXT REFERENCES servers(id) ON DELETE CASCADE,
+            metric      TEXT NOT NULL CHECK (metric IN ('cpu', 'memory', 'disk')),
+            threshold   INTEGER NOT NULL CHECK (threshold BETWEEN 1 AND 100),
+            consecutive INTEGER NOT NULL CHECK (consecutive BETWEEN 1 AND 60),
+            enabled     INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        );
+
+        CREATE INDEX idx_alert_rules_server ON alert_rules (server_id);
+
+        -- History. rule_id is deliberately not a foreign key: events outlive their rule, and
+        -- metric/threshold are a snapshot taken when the event happened.
+        CREATE TABLE alert_events (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_id   TEXT,
+            server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+            metric    TEXT NOT NULL CHECK (metric IN ('cpu', 'memory', 'disk')),
+            threshold INTEGER NOT NULL CHECK (threshold BETWEEN 1 AND 100),
+            state     TEXT NOT NULL CHECK (state IN ('firing', 'resolved')),
+            value     REAL,
+            at        INTEGER NOT NULL
+        );
+    ",
+    },
 ];
 
 #[cfg(test)]

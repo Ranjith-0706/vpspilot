@@ -22,12 +22,13 @@ function readHideDemo(): boolean {
 
 export default function DashboardPage() {
   const { state } = useServers();
-  const { monitors, start, stop } = useMonitoring();
+  const { monitors, start, stop, activeAlerts } = useMonitoring();
   const [hideDemo, setHideDemo] = useState(readHideDemo);
 
   const servers = state.status === "ready" ? state.servers : [];
   const hostKeys = state.status === "ready" ? state.hostKeys : {};
   const live = summarizeLive(servers.map((s) => monitors[s.id]));
+  const shownAlerts = activeAlerts.filter((a) => servers.some((s) => s.id === a.serverId));
 
   function toggleDemo() {
     const next = !hideDemo;
@@ -98,6 +99,15 @@ export default function DashboardPage() {
             />
           </div>
 
+          {shownAlerts.length > 0 && (
+            <p role="status" className="mt-4 rounded-lg bg-bad/10 p-3 text-sm text-bad">
+              {shownAlerts.length} {shownAlerts.length === 1 ? "alert is" : "alerts are"} firing.{" "}
+              <Link to={ROUTES.alerts.path} className="font-medium underline">
+                View alerts
+              </Link>
+            </p>
+          )}
+
           <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
             {servers.map((s) => (
               <LiveServerCard
@@ -105,6 +115,7 @@ export default function DashboardPage() {
                 server={s}
                 monitor={monitors[s.id]}
                 blocker={connectionBlocker(s, hostKeys[s.id])}
+                alerts={activeAlerts.filter((a) => a.serverId === s.id)}
                 onStart={() => void start(s.id)}
                 onStop={() => void stop(s.id)}
               />

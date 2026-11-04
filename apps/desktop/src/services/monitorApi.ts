@@ -1,6 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { call, requireDesktop, toAppError } from "./ipc";
-import type { MonitorEvent } from "../types/metrics";
+import type { StreamEvent } from "../types/metrics";
 
 /**
  * Starts (or restarts) monitoring a saved server. The backend picks the host, port and
@@ -10,10 +10,10 @@ import type { MonitorEvent } from "../types/metrics";
 export async function startMonitoring(
   serverId: string,
   intervalSecs: number,
-  onEvent: (event: MonitorEvent) => void,
+  onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
   requireDesktop("Monitoring");
-  const channel = new Channel<MonitorEvent>();
+  const channel = new Channel<StreamEvent>();
   channel.onmessage = onEvent;
   try {
     await invoke<void>("start_monitoring", { id: serverId, intervalSecs, onEvent: channel });

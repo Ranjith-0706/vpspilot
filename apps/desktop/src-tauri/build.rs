@@ -18,6 +18,13 @@ const COMMANDS: &[&str] = &[
     "close_terminal",
     "start_monitoring",
     "stop_monitoring",
+    "list_alert_rules",
+    "add_alert_rule",
+    "update_alert_rule",
+    "delete_alert_rule",
+    "list_alert_events",
+    "clear_alert_events",
+    "list_active_alerts",
 ];
 
 fn main() {

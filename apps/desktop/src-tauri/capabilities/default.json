@@ -21,6 +21,13 @@
     "allow-terminal-resize",
     "allow-close-terminal",
     "allow-start-monitoring",
-    "allow-stop-monitoring"
+    "allow-stop-monitoring",
+    "allow-list-alert-rules",
+    "allow-add-alert-rule",
+    "allow-update-alert-rule",
+    "allow-delete-alert-rule",
+    "allow-list-alert-events",
+    "allow-clear-alert-events",
+    "allow-list-active-alerts"
   ]
 }

@@ -1,7 +1,9 @@
 import { Badge, Card, UsageBar } from "../ui";
 import { Button } from "../Field";
 import { Sparkline } from "./Sparkline";
+import { METRIC_LABEL, severityOf } from "../../services/alertsState";
 import { formatKib, formatUptime } from "../../services/monitorState";
+import type { ActiveAlert } from "../../types/alerts";
 import type { Tone } from "../tones";
 import type { MonitorStatus, ServerMonitor } from "../../types/metrics";
 import type { ServerProfile } from "../../types/servers";
@@ -18,11 +20,14 @@ export function LiveServerCard({
   server,
   monitor,
   blocker,
+  alerts,
   onStart,
   onStop,
 }: {
   server: ServerProfile;
   monitor: ServerMonitor | undefined;
+  /** Alerts firing for this server right now. */
+  alerts: ActiveAlert[];
   /** Why monitoring cannot be started right now, if it can't. */
   blocker: string | null;
   onStart: () => void;
@@ -48,6 +53,18 @@ export function LiveServerCard({
         </div>
         <Badge tone={status.tone}>{status.label}</Badge>
       </div>
+
+      {alerts.length > 0 && (
+        <ul aria-label="Active alerts" className="mt-3 flex flex-wrap gap-2">
+          {alerts.map((a) => (
+            <li key={a.ruleId}>
+              <Badge tone={severityOf(a.threshold)}>
+                {METRIC_LABEL[a.metric]} {Math.round(a.value)}% (limit {a.threshold}%)
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {monitor?.message && (monitor.state === "failed" || monitor.state === "retrying") && (
         <p

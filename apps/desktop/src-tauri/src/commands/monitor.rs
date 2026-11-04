@@ -1,13 +1,17 @@
 //! Monitoring commands. `start_monitoring` takes a saved server's id and a poll interval only;
 //! the command that runs on the server is a compile-time constant (see `ssh::monitor::parse`).
 
+use crate::alerts::model::AlertEvent;
+use crate::alerts::service as alerts;
 use crate::error::AppError;
-use crate::ssh::monitor::{self, MonitorConfig, MonitorEvent};
+use crate::servers::repo::now_ms;
+use crate::ssh::monitor::{self, MonitorConfig, MonitorEvent, MonitorState};
 use crate::ssh::service;
 use crate::state::{AppState, MonitorEntry};
+use serde::Serialize;
 use std::time::Duration;
-use tauri::State;
 use tauri::ipc::Channel;
+use tauri::{AppHandle, Manager, State};
 use tokio::sync::mpsc;
 
 pub const MIN_INTERVAL_SECS: u32 = 2;
@@ -26,13 +30,72 @@ pub fn validate_interval(secs: u32) -> Result<Duration, AppError> {
     Ok(Duration::from_secs(secs.into()))
 }
 
+/// What the frontend receives: the monitor's own events, plus alert state changes found by
+/// evaluating its samples. Monitor events keep their shape; alerts add `{"type":"alert", ...}`.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum StreamEvent {
+    Monitor(MonitorEvent),
+    Alert(AlertNotice),
+}
+
+#[derive(Debug, Serialize)]
+pub struct AlertNotice {
+    /// Always `"alert"`.
+    #[serde(rename = "type")]
+    kind: &'static str,
+    event: AlertEvent,
+}
+
+impl StreamEvent {
+    fn alert(event: AlertEvent) -> Self {
+        StreamEvent::Alert(AlertNotice {
+            kind: "alert",
+            event,
+        })
+    }
+}
+
+/// Evaluates alert rules for a new sample. A failure here must never disturb monitoring, so it
+/// is logged and treated as "no alerts".
+fn alerts_for_sample(app: &AppHandle, server_id: &str, event: &MonitorEvent) -> Vec<AlertEvent> {
+    let MonitorEvent::Sample { metrics } = event else {
+        return Vec::new();
+    };
+    let state = app.state::<AppState>();
+    let result = (|| {
+        let conn = state.conn()?;
+        let mut engine = state.engine()?;
+        alerts::process_sample(&conn, &mut engine, server_id, metrics, now_ms())
+    })();
+    result.unwrap_or_else(|e| {
+        eprintln!("alert evaluation failed: {e}");
+        Vec::new()
+    })
+}
+
+/// Monitoring of a server ended: resolve whatever it had firing.
+fn close_alerts(app: &AppHandle, server_id: &str) -> Vec<AlertEvent> {
+    let state = app.state::<AppState>();
+    let result = (|| {
+        let conn = state.conn()?;
+        let mut engine = state.engine()?;
+        alerts::close_server(&conn, &mut engine, server_id, now_ms())
+    })();
+    result.unwrap_or_else(|e| {
+        eprintln!("closing alerts failed: {e}");
+        Vec::new()
+    })
+}
+
 /// Starts (or restarts) monitoring a server. Events stream back over `on_event`.
 #[tauri::command]
 pub async fn start_monitoring(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     interval_secs: u32,
-    on_event: Channel<MonitorEvent>,
+    on_event: Channel<StreamEvent>,
 ) -> Result<(), AppError> {
     let interval = validate_interval(interval_secs)?;
 
@@ -70,9 +133,36 @@ pub async fn start_monitoring(
     // is still ours (a restart may have replaced it).
     let monitors = state.monitor_registry();
     tokio::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            if on_event.send(event).is_err() {
+        'events: while let Some(event) = rx.recv().await {
+            let ends = matches!(
+                &event,
+                MonitorEvent::Status {
+                    state: MonitorState::Failed | MonitorState::Stopped,
+                    ..
+                }
+            );
+            for alert in alerts_for_sample(&app, &id, &event) {
+                if on_event.send(StreamEvent::alert(alert)).is_err() {
+                    break 'events;
+                }
+            }
+            if on_event.send(StreamEvent::Monitor(event)).is_err() {
                 break; // the frontend is gone; dropping `rx` makes the monitor stop
+            }
+            if ends {
+                break;
+            }
+        }
+        // However it ended, nothing is firing for a server that is no longer monitored. If a
+        // restart already replaced us, the newer monitor owns the alert state: leave it alone.
+        // (The registry lock is released before the database is touched; other code takes the
+        // database first and the registry second, so holding both here could deadlock.)
+        let superseded = monitors
+            .lock()
+            .is_ok_and(|map| map.get(&id).is_some_and(|e| e.token != token));
+        if !superseded {
+            for alert in close_alerts(&app, &id) {
+                let _ = on_event.send(StreamEvent::alert(alert));
             }
         }
         if let Ok(mut map) = monitors.lock()

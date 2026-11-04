@@ -25,7 +25,8 @@ VPSPilot is a Tauri 2 desktop app.
   `servers/service.rs` (use-cases) -> `commands/servers.rs` (thin Tauri wrappers). `credentials.rs`
   holds the `CredentialStore` trait and the Windows Credential Manager implementation.
 - Validation runs in both the frontend (`services/serverValidation.ts`) and Rust; Rust is authoritative.
-- Demo data lives in `src/demo/` and is only used by the Dashboard, Docker, Logs and Alerts pages.
+- Demo data lives in `src/demo/` and is only used by the Dashboard (in its labeled demo section), Docker and Logs pages. The Alerts
+  page is real as of Milestone 6.
   The Servers page shows real saved profiles only.
 
 ### servers table
@@ -117,6 +118,35 @@ The Dashboard shows real CPU, memory, disk, load and uptime for saved servers. M
 - **Demo data** stays on the Dashboard in its own clearly labelled, hideable section.
 - **Not supported yet:** non-Linux servers, per-process stats, network/disk I/O, alert thresholds,
   persisted history, Docker metrics.
+## Alerts (Milestone 6)
+
+Threshold rules over the live monitoring samples. Nothing new runs on a server: alerts are
+computed locally from the samples Milestone 5 already collects.
+
+- **Rules** (`alert_rules`, migration 3): a metric (`cpu`, `memory` or `disk`), a threshold of
+  1-100 %, and a number of checks in a row (1-60). A rule applies to one server or to all of
+  them, and can be disabled. At most 100 rules.
+- **Engine** (`alerts/engine.rs`): a pure state machine with no I/O or clock.
+  - An alert fires after the value is at or above the threshold for the required number of
+    consecutive samples.
+  - It resolves only when the value drops clearly below the threshold (5 points, capped at half
+    the threshold), so a value hovering at the limit does not flap.
+  - It resolves with no value when its rule is deleted, disabled or changed to another metric, or
+    when monitoring of the server ends.
+- **History** (`alert_events`, migration 3): every fire and resolve, newest first, trimmed to the
+  latest 1000. `metric` and `threshold` are a snapshot, and `rule_id` is deliberately not a
+  foreign key, so history stays readable after a rule is edited or deleted. Deleting a server
+  deletes its rules and history.
+- **Where it runs:** the monitor's forwarder task evaluates each sample, writes the events, and
+  streams them to the UI on the same channel (`{"type":"alert", ...}`). The currently-firing set
+  lives in memory only and ends with monitoring; it is not restored after a restart.
+- **Failure isolation:** an alert evaluation error is logged and never interrupts monitoring.
+- **Locking:** the alert engine and the database are never held across an await. Code that holds
+  the database may take the monitor registry afterwards, never the reverse, so the forwarder
+  releases the registry before touching the database.
+- **Not supported yet:** desktop or email notifications, "server unreachable" alerts, per-process
+  or network metrics, severity levels, snoozing, and alert state that survives a restart.
+
 ## Milestone status
 
 - Milestone 1: UI shell, routing, theming, demo data.
@@ -124,4 +154,5 @@ The Dashboard shows real CPU, memory, disk, load and uptime for saved servers. M
 - Milestone 3: SSH connection test with host key verification (no terminal or commands).
 - Milestone 4: interactive SSH terminal (xterm.js).
 - Milestone 5: live server monitoring over SSH.
-- Future: Docker, alerts, persisted metrics history, Go agent, passphrase-protected keys.
+- Milestone 6: threshold alerts (rules, history, Alerts page).
+- Future: Docker, notifications, persisted metrics history, Go agent, passphrase-protected keys.

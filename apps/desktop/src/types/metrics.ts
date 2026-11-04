@@ -1,3 +1,5 @@
+import type { AlertEvent } from "./alerts";
+
 /** One monitoring sample from a server. Mirrors the Rust `Metrics` struct. */
 export interface Metrics {
   cpuPercent: number;
@@ -23,6 +25,15 @@ export type MonitorStatus = "connecting" | "online" | "retrying" | "failed" | "s
 /** Events streamed from the Rust monitor. */
 export type MonitorEvent =
   { type: "status"; state: MonitorStatus; message?: string } | { type: "sample"; metrics: Metrics };
+
+/** An alert firing or resolving, found by evaluating the monitor's samples against the rules. */
+export interface AlertNotice {
+  type: "alert";
+  event: AlertEvent;
+}
+
+/** Everything the monitoring stream can carry. */
+export type StreamEvent = MonitorEvent | AlertNotice;
 
 export interface HistoryPoint {
   t: number;

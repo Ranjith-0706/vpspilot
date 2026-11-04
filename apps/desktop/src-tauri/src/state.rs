@@ -1,3 +1,4 @@
+use crate::alerts::engine::AlertEngine;
 use crate::credentials::CredentialStore;
 use crate::error::AppError;
 use crate::ssh::monitor::MonitorHandle;
@@ -28,9 +29,17 @@ pub struct AppState {
     pub terminals: TerminalSessions,
     /// Running monitors by server id.
     pub monitors: MonitorRegistry,
+    /// What is firing right now. Never held across an await.
+    pub alerts: Mutex<AlertEngine>,
 }
 
 impl AppState {
+    pub fn engine(&self) -> Result<MutexGuard<'_, AlertEngine>, AppError> {
+        self.alerts
+            .lock()
+            .map_err(|_| AppError::internal("Alert state lock was poisoned."))
+    }
+
     pub fn conn(&self) -> Result<MutexGuard<'_, Connection>, AppError> {
         match &self.db {
             Ok(m) => m

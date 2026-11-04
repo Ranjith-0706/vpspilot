@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clear-alert-events"
+description = "Enables the clear_alert_events command without any pre-configured scope."
+commands.allow = ["clear_alert_events"]
+
+[[permission]]
+identifier = "deny-clear-alert-events"
+description = "Denies the clear_alert_events command without any pre-configured scope."
+commands.deny = ["clear_alert_events"]
