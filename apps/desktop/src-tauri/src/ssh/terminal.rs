@@ -14,8 +14,8 @@ use russh::{ChannelMsg, Disconnect};
 use serde::{Serialize, Serializer};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::{Notify, mpsc};
 
 pub const MAX_COLS: u32 = 1000;
 pub const MAX_ROWS: u32 = 1000;
@@ -43,7 +43,7 @@ pub enum TerminalEvent {
     },
 }
 
-enum Command {
+pub(crate) enum Command {
     Input(Vec<u8>),
     Resize { cols: u16, rows: u16 },
     Close,
@@ -52,6 +52,8 @@ enum Command {
 #[derive(Clone)]
 pub struct TerminalHandle {
     tx: mpsc::Sender<Command>,
+    /// Wakes the session even when the input queue is full, so a close request is never lost.
+    closer: Arc<Notify>,
 }
 
 fn send(tx: &mpsc::Sender<Command>, cmd: Command) -> Result<(), AppError> {
@@ -77,6 +79,22 @@ impl TerminalHandle {
     /// Asks the session to end. Safe to call on an already-ended session.
     pub fn close(&self) {
         let _ = self.tx.try_send(Command::Close);
+        self.closer.notify_one();
+    }
+
+    /// A handle that is not connected to any session, for tests of code that holds handles.
+    #[cfg(test)]
+    pub(crate) fn detached() -> (Self, mpsc::Receiver<Command>, Arc<Notify>) {
+        let (tx, rx) = mpsc::channel(QUEUE);
+        let closer = Arc::new(Notify::new());
+        (
+            Self {
+                tx,
+                closer: closer.clone(),
+            },
+            rx,
+            closer,
+        )
     }
 }
 
@@ -137,10 +155,13 @@ pub async fn start(
         .map_err(|e| format!("Could not start a shell: {e}"))?;
 
     let (tx, mut rx) = mpsc::channel::<Command>(QUEUE);
+    let closer = Arc::new(Notify::new());
+    let closed = closer.clone();
     tokio::spawn(async move {
         let mut reason: Option<String> = None;
         loop {
             tokio::select! {
+                _ = closed.notified() => break,
                 msg = channel.wait() => match msg {
                     Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
                         // Awaiting here applies backpressure to the remote when the UI is slow.
@@ -179,7 +200,7 @@ pub async fn start(
         let _ = events.send(TerminalEvent::Closed { reason }).await;
     });
 
-    Ok(TerminalHandle { tx })
+    Ok(TerminalHandle { tx, closer })
 }
 
 #[cfg(test)]
@@ -214,7 +235,10 @@ mod unit_tests {
     #[tokio::test]
     async fn handle_rejects_oversized_input_and_reports_ended_session() {
         let (tx, rx) = mpsc::channel(1);
-        let h = TerminalHandle { tx };
+        let h = TerminalHandle {
+            tx,
+            closer: Arc::new(Notify::new()),
+        };
         assert!(h.write(vec![0; MAX_INPUT_BYTES + 1]).is_err());
         assert!(h.write(vec![1]).is_ok());
         assert!(h.write(vec![1]).is_err(), "full queue reports busy");
@@ -222,5 +246,19 @@ mod unit_tests {
         assert!(h.write(vec![1]).is_err(), "closed session reports ended");
         assert!(h.resize(0, 0).is_err());
         h.close(); // never panics
+    }
+
+    #[tokio::test]
+    async fn close_is_delivered_even_when_the_input_queue_is_full() {
+        let (h, _rx, closer) = TerminalHandle::detached();
+        for _ in 0..QUEUE {
+            h.write(vec![1]).unwrap();
+        }
+        assert!(h.write(vec![1]).is_err(), "queue is full");
+        h.close();
+        // notify_one stores a permit, so a session that checks later still sees the close.
+        tokio::time::timeout(Duration::from_secs(1), closer.notified())
+            .await
+            .expect("close was signalled");
     }
 }

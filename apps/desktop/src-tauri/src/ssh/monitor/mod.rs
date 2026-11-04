@@ -21,6 +21,28 @@ use tokio::sync::{mpsc, watch};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// After this many consecutive polls that fail for a reason retrying cannot fix (the command
+/// exits non-zero, prints something unparseable, or is refused), monitoring gives up instead of
+/// logging in again forever. A successful sample resets the count, so one glitch under load
+/// still recovers.
+const MAX_DETERMINISTIC_FAILURES: u32 = 3;
+
+/// Why a poll failed.
+enum PollError {
+    /// A network or timing problem: worth retrying indefinitely with backoff.
+    Transient(String),
+    /// The server answered, but not in a way retrying will change (e.g. not a Linux host).
+    Deterministic(String),
+}
+
+impl PollError {
+    fn message(&self) -> &str {
+        match self {
+            PollError::Transient(m) | PollError::Deterministic(m) => m,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MonitorState {
@@ -104,16 +126,15 @@ async fn emit(
 }
 
 /// Runs the fixed command once over `session` and parses its output.
-async fn poll(session: &Session, timeout: Duration) -> Result<Metrics, String> {
+async fn poll(session: &Session, timeout: Duration) -> Result<Metrics, PollError> {
     let work = async {
         let mut channel = session
             .channel_open_session()
             .await
-            .map_err(|e| format!("Could not open a channel: {e}"))?;
-        channel
-            .exec(true, COMMAND)
-            .await
-            .map_err(|e| format!("Could not run the monitoring command: {e}"))?;
+            .map_err(|e| PollError::Transient(format!("Could not open a channel: {e}")))?;
+        channel.exec(true, COMMAND).await.map_err(|e| {
+            PollError::Transient(format!("Could not run the monitoring command: {e}"))
+        })?;
 
         let mut out: Vec<u8> = Vec::new();
         let mut exit: Option<u32> = None;
@@ -121,13 +142,17 @@ async fn poll(session: &Session, timeout: Duration) -> Result<Metrics, String> {
             match msg {
                 ChannelMsg::Data { data } => {
                     if out.len() + data.len() > MAX_OUTPUT_BYTES {
-                        return Err("The server returned too much output.".to_string());
+                        return Err(PollError::Deterministic(
+                            "The server returned too much output.".into(),
+                        ));
                     }
                     out.extend_from_slice(&data);
                 }
                 ChannelMsg::ExitStatus { exit_status } => exit = Some(exit_status),
                 ChannelMsg::Failure => {
-                    return Err("The server refused to run the monitoring command.".into());
+                    return Err(PollError::Deterministic(
+                        "The server refused to run the monitoring command.".into(),
+                    ));
                 }
                 ChannelMsg::Eof if exit.is_some() => break,
                 ChannelMsg::Close => break,
@@ -137,21 +162,27 @@ async fn poll(session: &Session, timeout: Duration) -> Result<Metrics, String> {
         match exit {
             Some(0) => {}
             Some(code) => {
-                return Err(format!(
+                return Err(PollError::Deterministic(format!(
                     "The monitoring command failed (exit status {code}). Monitoring supports Linux servers."
+                )));
+            }
+            None => {
+                return Err(PollError::Transient(
+                    "The connection closed before the command finished.".into(),
                 ));
             }
-            None => return Err("The connection closed before the command finished.".into()),
         }
         parse_output(
             &String::from_utf8_lossy(&out),
             crate::servers::repo::now_ms(),
         )
-        .map_err(|e| e.to_string())
+        .map_err(|e| PollError::Deterministic(e.to_string()))
     };
     match tokio::time::timeout(timeout, work).await {
         Ok(r) => r,
-        Err(_) => Err("The server took too long to respond.".into()),
+        Err(_) => Err(PollError::Transient(
+            "The server took too long to respond.".into(),
+        )),
     }
 }
 
@@ -185,6 +216,7 @@ pub fn spawn(
     let (stop_tx, mut stop) = watch::channel::<Option<String>>(None);
     tokio::spawn(async move {
         let mut backoff = cfg.retry_base;
+        let mut deterministic_failures: u32 = 0;
         let final_reason: Option<String>;
 
         'outer: loop {
@@ -242,6 +274,7 @@ pub fn spawn(
             loop {
                 match poll(&session, cfg.poll_timeout).await {
                     Ok(metrics) => {
+                        deterministic_failures = 0;
                         if !online {
                             online = true;
                             if !emit(&events, MonitorState::Online, None).await {
@@ -252,11 +285,25 @@ pub fn spawn(
                             return;
                         }
                     }
-                    Err(message) => {
+                    Err(error) => {
                         // Session is suspect: drop it and reconnect after a pause.
                         let _ = session
                             .disconnect(Disconnect::ByApplication, "reconnecting", "en")
                             .await;
+                        if matches!(error, PollError::Deterministic(_)) {
+                            deterministic_failures += 1;
+                            if deterministic_failures >= MAX_DETERMINISTIC_FAILURES {
+                                let message = format!(
+                                    "{} Monitoring stopped after {MAX_DETERMINISTIC_FAILURES} failed attempts.",
+                                    error.message()
+                                );
+                                let _ = emit(&events, MonitorState::Failed, Some(message)).await;
+                                return; // a failure, not a stop: no Stopped event
+                            }
+                        } else {
+                            deterministic_failures = 0;
+                        }
+                        let message = error.message().to_string();
                         if !emit(&events, MonitorState::Retrying, Some(message)).await {
                             return;
                         }

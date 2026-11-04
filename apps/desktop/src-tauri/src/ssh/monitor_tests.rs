@@ -258,6 +258,52 @@ async fn unparseable_output_is_reported_safely_and_retried_without_echoing_it() 
 }
 
 #[tokio::test]
+async fn repeated_unparseable_output_ends_in_failed_instead_of_retrying_forever() {
+    let s = start_server_with_exec(
+        None,
+        Some(
+            "SECRET-REMOTE-TEXT
+"
+            .into(),
+        ),
+    )
+    .await;
+    let (_handle, mut rx) = start(trusted(&s));
+    let mut retries = 0;
+    loop {
+        match next(&mut rx)
+            .await
+            .expect("monitor ended without a Failed event")
+        {
+            MonitorEvent::Status {
+                state: MonitorState::Retrying,
+                ..
+            } => retries += 1,
+            MonitorEvent::Status {
+                state: MonitorState::Failed,
+                message,
+            } => {
+                let m = message.unwrap();
+                assert!(
+                    m.contains("unexpected output") && m.contains("stopped"),
+                    "{m}"
+                );
+                assert!(!m.contains("SECRET"));
+                break;
+            }
+            MonitorEvent::Sample { .. } => panic!("garbage must not produce a sample"),
+            _ => {}
+        }
+    }
+    assert_eq!(
+        retries, 2,
+        "two retries, then it gives up on the third failure"
+    );
+    // The task has ended: the channel closes with nothing further, and no Stopped event.
+    assert!(next(&mut rx).await.is_none());
+}
+
+#[tokio::test]
 async fn events_serialize_with_camel_case_and_a_type_tag() {
     let s = start_server(None).await;
     let (handle, mut rx) = start(trusted(&s));

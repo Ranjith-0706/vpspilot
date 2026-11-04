@@ -4,7 +4,7 @@
 use crate::error::AppError;
 use crate::ssh::service;
 use crate::ssh::terminal::{self, TerminalEvent, TerminalHandle};
-use crate::state::AppState;
+use crate::state::{AppState, TerminalEntry};
 use tauri::State;
 use tauri::ipc::Channel;
 use tokio::sync::mpsc;
@@ -15,7 +15,7 @@ fn session(state: &AppState, session_id: &str) -> Result<TerminalHandle, AppErro
     state
         .terminals()?
         .get(session_id)
-        .cloned()
+        .map(|e| e.handle.clone())
         .ok_or_else(|| AppError::not_found("Terminal session"))
 }
 
@@ -46,9 +46,13 @@ pub async fn open_terminal(
         .map_err(AppError::connection)?;
 
     let session_id = uuid::Uuid::new_v4().to_string();
-    state
-        .terminals()?
-        .insert(session_id.clone(), handle.clone());
+    state.terminals()?.insert(
+        session_id.clone(),
+        TerminalEntry {
+            server_id: id.clone(),
+            handle: handle.clone(),
+        },
+    );
 
     // Forward events to the frontend; when the session ends, forget it.
     let sessions = state.terminal_sessions();

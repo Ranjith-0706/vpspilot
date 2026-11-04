@@ -51,7 +51,13 @@ pub fn trust_host_key(
 pub fn forget_host_key(state: State<'_, AppState>, id: String) -> Result<(), AppError> {
     let conn = state.conn()?;
     let mut pending = state.pending()?;
-    service::forget(&conn, &mut pending, &id)
+    service::forget(&conn, &mut pending, &id)?;
+    // Sessions that relied on the forgotten key must not keep running.
+    state.revoke_server(
+        &id,
+        "The trusted host key was forgotten. Trust it again to monitor.",
+    );
+    Ok(())
 }
 
 #[tauri::command]

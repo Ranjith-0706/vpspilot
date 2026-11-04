@@ -29,9 +29,24 @@ pub fn update_server(
     input: ServerInput,
 ) -> Result<ServerProfile, AppError> {
     let conn = state.conn()?;
+    let before = crate::servers::repo::get(&conn, &id)?;
     let updated = service::update_server(&conn, state.credentials.as_ref(), &id, &input, now_ms())?;
     // A running monitor holds the old connection details; make the user restart it.
     state.stop_monitor(&id, "Server settings changed. Start monitoring again.");
+    // Open shells were authenticated with the old details: end them if those changed. A rename
+    // or description edit leaves them alone.
+    let identity_changed = before.is_none_or(|b| {
+        (&b.host, b.port, &b.username, b.auth_method)
+            != (
+                &updated.host,
+                updated.port,
+                &updated.username,
+                updated.auth_method,
+            )
+    });
+    if identity_changed {
+        state.close_terminals(&id);
+    }
     Ok(updated)
 }
 
@@ -39,7 +54,7 @@ pub fn update_server(
 pub fn delete_server(state: State<'_, AppState>, id: String) -> Result<(), AppError> {
     let conn = state.conn()?;
     service::delete_server(&conn, state.credentials.as_ref(), &id)?;
-    state.stop_monitor(&id, "Server was removed.");
+    state.revoke_server(&id, "Server was removed.");
     Ok(())
 }
 
@@ -53,7 +68,7 @@ pub fn set_server_credential(
     let conn = state.conn()?;
     let updated =
         service::set_credential(&conn, state.credentials.as_ref(), &id, &secret, now_ms())?;
-    state.stop_monitor(&id, "Credential changed. Start monitoring again.");
+    state.revoke_server(&id, "Credential changed. Start monitoring again.");
     Ok(updated)
 }
 
@@ -64,6 +79,6 @@ pub fn clear_server_credential(
 ) -> Result<ServerProfile, AppError> {
     let conn = state.conn()?;
     let updated = service::clear_credential(&conn, state.credentials.as_ref(), &id, now_ms())?;
-    state.stop_monitor(&id, "Credential removed.");
+    state.revoke_server(&id, "Credential removed.");
     Ok(updated)
 }
