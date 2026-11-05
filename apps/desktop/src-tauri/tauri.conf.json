@@ -13,10 +13,11 @@
     "windows": [
       {
         "title": "VPSPilot",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 960,
-        "minHeight": 600
+        "width": 1180,
+        "height": 700,
+        "minWidth": 800,
+        "minHeight": 520,
+        "center": true
       }
     ],
     "security": {

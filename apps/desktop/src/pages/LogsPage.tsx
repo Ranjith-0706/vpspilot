@@ -226,22 +226,22 @@ export default function LogsPage() {
           </p>
 
           {blocker && (
-            <p role="status" className="mt-4 rounded-lg bg-warn/10 p-3 text-sm text-warn">
+            <p role="status" className="mt-4 rounded-md bg-warn/10 p-3 text-sm text-warn">
               {blocker}
             </p>
           )}
           {list?.error && (
-            <p role="alert" className="mt-4 rounded-lg bg-bad/10 p-3 text-sm text-bad">
+            <p role="alert" className="mt-4 rounded-md bg-bad/10 p-3 text-sm text-bad">
               {list.error}
             </p>
           )}
           {list?.result && list.result.outcome !== "ok" && (
-            <p role="alert" className="mt-4 rounded-lg bg-warn/10 p-3 text-sm text-warn">
+            <p role="alert" className="mt-4 rounded-md bg-warn/10 p-3 text-sm text-warn">
               {list.result.message}
             </p>
           )}
           {current?.error && (
-            <p role="alert" className="mt-4 rounded-lg bg-bad/10 p-3 text-sm text-bad">
+            <p role="alert" className="mt-4 rounded-md bg-bad/10 p-3 text-sm text-bad">
               {current.error}
             </p>
           )}
@@ -308,7 +308,7 @@ export default function LogsPage() {
               </div>
 
               {result.truncated && (
-                <p role="status" className="mb-3 rounded-lg bg-warn/10 p-3 text-sm text-warn">
+                <p role="status" className="mb-3 rounded-md bg-warn/10 p-3 text-sm text-warn">
                   There were more lines than can be shown. Only the newest {lines.length} are
                   listed.
                 </p>
@@ -328,7 +328,7 @@ export default function LogsPage() {
                   role="log"
                   tabIndex={0}
                   aria-label="Container logs"
-                  className="max-h-[65vh] overflow-auto rounded-xl border border-border bg-surface py-2 font-mono text-xs"
+                  className="max-h-[calc(100dvh-19rem)] min-h-40 overflow-auto rounded-md border border-border bg-surface py-2 font-mono text-xs"
                 >
                   {shown.map((l, i) => {
                     const guessed: GuessedLevel | null = guessLevel(l.message);

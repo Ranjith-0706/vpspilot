@@ -69,7 +69,7 @@ export function LiveServerCard({
       {monitor?.message && (monitor.state === "failed" || monitor.state === "retrying") && (
         <p
           role={monitor.state === "failed" ? "alert" : "status"}
-          className={`mt-3 rounded-lg p-2 text-xs ${monitor.state === "failed" ? "bg-bad/10 text-bad" : "bg-warn/10 text-warn"}`}
+          className={`mt-3 rounded-md p-2 text-xs ${monitor.state === "failed" ? "bg-bad/10 text-bad" : "bg-warn/10 text-warn"}`}
         >
           {monitor.message}
         </p>
@@ -127,7 +127,7 @@ export function LiveServerCard({
       )}
 
       {blocker && !active && (
-        <p role="status" className="mt-3 rounded-lg bg-warn/10 p-2 text-xs text-warn">
+        <p role="status" className="mt-3 rounded-md bg-warn/10 p-2 text-xs text-warn">
           {blocker}
         </p>
       )}

@@ -1,5 +1,5 @@
 import { Button } from "./Field";
-import { Dialog } from "./Dialog";
+import { Dialog, DialogBody, DialogFooter } from "./Dialog";
 
 export function ConfirmDialog({
   title,
@@ -20,20 +20,22 @@ export function ConfirmDialog({
 }) {
   return (
     <Dialog title={title} onClose={onCancel}>
-      <div className="text-sm">{children}</div>
-      {error && (
-        <p role="alert" className="mt-3 rounded-lg bg-bad/10 p-3 text-sm text-bad">
-          {error}
-        </p>
-      )}
-      <div className="mt-5 flex justify-end gap-2">
+      <DialogBody>
+        <div className="text-sm">{children}</div>
+        {error && (
+          <p role="alert" className="rounded-md bg-bad/10 p-3 text-sm text-bad">
+            {error}
+          </p>
+        )}
+      </DialogBody>
+      <DialogFooter>
         <Button onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
         <Button variant="danger" onClick={onConfirm} disabled={busy}>
           {busy ? "Working…" : confirmLabel}
         </Button>
-      </div>
+      </DialogFooter>
     </Dialog>
   );
 }

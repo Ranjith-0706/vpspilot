@@ -139,12 +139,12 @@ export function TerminalView({
       </div>
 
       {status.kind === "error" && (
-        <p role="alert" className="mb-3 rounded-lg bg-bad/10 p-3 text-sm text-bad">
+        <p role="alert" className="mb-3 rounded-md bg-bad/10 p-3 text-sm text-bad">
           {status.message}
         </p>
       )}
       {status.kind === "closed" && status.reason && (
-        <p role="status" className="mb-3 rounded-lg bg-surface-2 p-3 text-sm text-muted">
+        <p role="status" className="mb-3 rounded-md bg-surface-2 p-3 text-sm text-muted">
           {status.reason}
         </p>
       )}
@@ -152,7 +152,7 @@ export function TerminalView({
       <div
         ref={container}
         aria-label="Terminal"
-        className="h-[60vh] min-h-64 overflow-hidden rounded-lg border border-border bg-bg p-2"
+        className="h-[calc(100dvh-14rem)] min-h-64 overflow-hidden rounded-md border border-border bg-bg p-2"
       />
     </div>
   );

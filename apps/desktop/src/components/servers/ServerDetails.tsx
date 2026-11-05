@@ -11,9 +11,17 @@ export function ConnectionBadge({ state = CONNECTION }: { state?: ConnectionStat
 
 const fmt = (ms: number) => new Date(ms).toLocaleString();
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({
+  label,
+  children,
+  wide = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
   return (
-    <div>
+    <div className={wide ? "col-span-2 sm:col-span-3 xl:col-span-2" : ""}>
       <dt className="text-xs text-muted">{label}</dt>
       <dd className="mt-0.5 break-words text-sm">{children}</dd>
     </div>
@@ -35,9 +43,9 @@ export function ServerDetails({
 }) {
   return (
     <Card>
-      <div className="mb-4 flex items-start justify-between gap-2">
+      <div className="mb-3 flex items-start justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold">{server.name}</h2>
+          <h2 className="text-base font-semibold">{server.name}</h2>
           <div className="mt-1">
             <ConnectionBadge />
           </div>
@@ -51,12 +59,13 @@ export function ServerDetails({
           ✕
         </button>
       </div>
-      <dl className="space-y-3">
+      {extra}
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-border pt-4 sm:grid-cols-3 xl:grid-cols-2">
         <Row label="Host">{server.host}</Row>
         <Row label="SSH port">{server.port}</Row>
         <Row label="SSH username">{server.username}</Row>
         <Row label="Authentication">{server.authMethod === "ssh_key" ? "SSH key" : "Password"}</Row>
-        <Row label="Credential">
+        <Row label="Credential" wide>
           {server.credentialRef ? (
             <>
               <Badge tone="ok">Stored in OS credential store</Badge>
@@ -66,17 +75,16 @@ export function ServerDetails({
             <Badge tone="warn">No credential stored</Badge>
           )}
         </Row>
-        <Row label="Description">
+        <Row label="Description" wide>
           {server.description ?? <span className="text-muted">None</span>}
         </Row>
         <Row label="Created">{fmt(server.createdAt)}</Row>
         <Row label="Updated">{fmt(server.updatedAt)}</Row>
-        <Row label="ID">
+        <Row label="ID" wide>
           <span className="font-mono text-xs">{server.id}</span>
         </Row>
       </dl>
-      {extra}
-      <div className="mt-5 flex gap-2">
+      <div className="mt-4 flex gap-2 border-t border-border pt-4">
         <Button onClick={onEdit}>Edit</Button>
         <Button variant="danger" onClick={onDelete}>
           Delete

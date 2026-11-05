@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, PageHeader, Table } from "../components/ui";
 import { Badge } from "../components/ui";
 import { Button } from "../components/Field";
-import { Dialog } from "../components/Dialog";
+import { Dialog, DialogBody, DialogFooter } from "../components/Dialog";
 import { ServerForm, type ServerFormSubmit } from "../components/servers/ServerForm";
 import { ConnectionBadge, ServerDetails } from "../components/servers/ServerDetails";
 import { ConnectionTestPanel } from "../components/servers/ConnectionTestPanel";
@@ -76,7 +76,7 @@ export default function ServersPage() {
       {notice && (
         <div
           role="status"
-          className="mb-4 flex items-start justify-between gap-3 rounded-lg bg-warn/10 p-3 text-sm text-warn"
+          className="mb-4 flex items-start justify-between gap-3 rounded-md bg-warn/10 p-3 text-sm text-warn"
         >
           <span>{notice}</span>
           <button
@@ -122,22 +122,33 @@ export default function ServersPage() {
       )}
 
       {state.status === "ready" && servers.length > 0 && (
-        <div className={`grid gap-6 ${selected ? "xl:grid-cols-[1fr_22rem]" : ""}`}>
+        <div className={`grid gap-4 ${selected ? "xl:grid-cols-[1fr_22rem]" : ""}`}>
           <Table
-            headers={["Name", "Host", "User", "Auth", "Connection", "Last test", "Credential", ""]}
+            headers={[
+              "Name",
+              "Host",
+              "User",
+              "Auth",
+              { label: "Connection", className: "hidden lg:table-cell" },
+              { label: "Last test", className: "hidden lg:table-cell" },
+              "Credential",
+              "",
+            ]}
           >
             {servers.map((s) => (
               <tr key={s.id} className={s.id === selectedId ? "bg-accent/5" : ""}>
-                <td className="px-4 py-3 font-medium">{s.name}</td>
-                <td className="px-4 py-3 text-muted">
+                <td className="whitespace-nowrap px-3 py-2 font-medium">{s.name}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-muted">
                   {s.host}:{s.port}
                 </td>
-                <td className="px-4 py-3">{s.username}</td>
-                <td className="px-4 py-3">{s.authMethod === "ssh_key" ? "SSH key" : "Password"}</td>
-                <td className="px-4 py-3">
+                <td className="whitespace-nowrap px-3 py-2">{s.username}</td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  {s.authMethod === "ssh_key" ? "SSH key" : "Password"}
+                </td>
+                <td className="hidden px-3 py-2 lg:table-cell">
                   <ConnectionBadge />
                 </td>
-                <td className="px-4 py-3">
+                <td className="hidden whitespace-nowrap px-3 py-2 lg:table-cell">
                   {tests[s.id] ? (
                     <Badge tone={outcomeView(tests[s.id]!.outcome).tone}>
                       {outcomeView(tests[s.id]!.outcome).label}
@@ -146,14 +157,14 @@ export default function ServersPage() {
                     <span className="text-xs text-muted">Not tested</span>
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td className="whitespace-nowrap px-3 py-2">
                   {s.credentialRef ? (
                     <Badge tone="ok">Stored</Badge>
                   ) : (
                     <Badge tone="warn">None</Badge>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-right">
+                <td className="whitespace-nowrap px-3 py-2 text-right">
                   <RowAction label="Details" server={s} onClick={() => setSelectedId(s.id)} />
                   <RowAction
                     label="Edit"
@@ -266,23 +277,25 @@ function DeleteDialog({
 
   return (
     <Dialog title={`Delete ${server.name}?`} onClose={onCancel}>
-      <p className="text-sm">
-        This removes the saved profile{server.credentialRef ? " and its stored credential" : ""}{" "}
-        from this computer. The server itself is not touched.
-      </p>
-      {error && (
-        <p role="alert" className="mt-3 rounded-lg bg-bad/10 p-3 text-sm text-bad">
-          {error}
+      <DialogBody>
+        <p className="text-sm">
+          This removes the saved profile{server.credentialRef ? " and its stored credential" : ""}{" "}
+          from this computer. The server itself is not touched.
         </p>
-      )}
-      <div className="mt-5 flex justify-end gap-2">
+        {error && (
+          <p role="alert" className="rounded-md bg-bad/10 p-3 text-sm text-bad">
+            {error}
+          </p>
+        )}
+      </DialogBody>
+      <DialogFooter>
         <Button onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
         <Button variant="danger" onClick={() => void confirm()} disabled={busy}>
           {busy ? "Deleting…" : "Delete"}
         </Button>
-      </div>
+      </DialogFooter>
     </Dialog>
   );
 }

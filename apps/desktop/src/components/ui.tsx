@@ -10,8 +10,10 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-border bg-surface p-5 ${className}`}>
-      {title && <h2 className="mb-3 text-sm font-semibold text-muted">{title}</h2>}
+    <section className={`rounded-md border border-border bg-surface p-4 ${className}`}>
+      {title && (
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{title}</h2>
+      )}
       {children}
     </section>
   );
@@ -19,7 +21,7 @@ export function Card({
 
 export function MockBadge() {
   return (
-    <span className="rounded-full border border-warn/40 bg-warn/10 px-2.5 py-0.5 text-xs font-medium text-warn">
+    <span className="rounded border border-warn/40 bg-warn/10 px-2 py-0.5 text-xs font-medium text-warn">
       Mock data
     </span>
   );
@@ -37,13 +39,13 @@ export function PageHeader({
   mock?: boolean;
 }) {
   return (
-    <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{title}</h1>
+          <h1 className="text-lg font-semibold">{title}</h1>
           {mock && <MockBadge />}
         </div>
-        {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
+        {subtitle && <p className="mt-0.5 max-w-3xl text-xs text-muted">{subtitle}</p>}
       </div>
       {actions}
     </header>
@@ -61,7 +63,7 @@ const toneClass: Record<Tone, string> = {
 export function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
     <span
-      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${toneClass[tone]}`}
+      className={`inline-block whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${toneClass[tone]}`}
     >
       {children}
     </span>
@@ -103,8 +105,8 @@ export function StatCard({
 }) {
   return (
     <Card>
-      <p className="text-sm text-muted">{label}</p>
-      <p className="mt-1 text-3xl font-semibold">{value}</p>
+      <p className="text-xs text-muted">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
       {percent !== undefined && (
         <div className="mt-3">
           <UsageBar label={label} percent={percent} />
@@ -115,17 +117,26 @@ export function StatCard({
   );
 }
 
-export function Table({ headers, children }: { headers: string[]; children: ReactNode }) {
+export type TableHeader = string | { label: string; className?: string };
+
+/** Pass `className: "hidden lg:table-cell"` on a header (and the same on its cells) to drop a column on narrow windows. */
+export function Table({ headers, children }: { headers: TableHeader[]; children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+    <div className="overflow-x-auto rounded-md border border-border bg-surface">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-border bg-surface-2 text-xs uppercase text-muted">
+        <thead className="sticky top-0 border-b border-border bg-surface-2 text-xs uppercase tracking-wide text-muted">
           <tr>
-            {headers.map((h) => (
-              <th key={h} className="px-4 py-3 font-medium">
-                {h}
-              </th>
-            ))}
+            {headers.map((h, i) => {
+              const { label, className = "" } = typeof h === "string" ? { label: h } : h;
+              return (
+                <th
+                  key={`${label}-${i}`}
+                  className={`whitespace-nowrap px-3 py-2 font-medium ${className}`}
+                >
+                  {label}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody className="divide-y divide-border">{children}</tbody>
