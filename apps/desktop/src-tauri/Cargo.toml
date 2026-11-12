@@ -1,6 +1,6 @@
 [package]
 name = "vpspilot-desktop"
-version = "0.1.0"
+version = "0.2.0"
 description = "VPSPilot - open-source VPS monitoring and management"
 authors = ["VPSPilot contributors"]
 edition = "2024"
