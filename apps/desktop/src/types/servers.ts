@@ -48,9 +48,6 @@ export interface AppError {
   field?: string;
 }
 
-/** Real connectivity is not implemented yet, so every profile is "not_connected". */
-export type ConnectionState = "not_connected";
-
 export type ConnectionTestOutcome =
   | "success"
   | "host_key_unknown"

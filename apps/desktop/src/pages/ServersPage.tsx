@@ -7,9 +7,10 @@ import { ServerForm, type ServerFormSubmit } from "../components/servers/ServerF
 import { ConnectionBadge, ServerDetails } from "../components/servers/ServerDetails";
 import { ConnectionTestPanel } from "../components/servers/ConnectionTestPanel";
 import { outcomeView } from "../services/connectionTest";
+import { useConnections } from "../hooks/useConnections";
 import { useServers } from "../hooks/useServers";
 import { serversApi, toAppError } from "../services/serversApi";
-import type { ConnectionTestResult, ServerProfile } from "../types/servers";
+import type { ServerProfile } from "../types/servers";
 
 type Modal = { kind: "add" } | { kind: "edit"; id: string } | { kind: "delete"; id: string } | null;
 
@@ -18,16 +19,8 @@ export default function ServersPage() {
   const [modal, setModal] = useState<Modal>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // Test results live only in memory for this session; they are not persisted.
-  const [tests, setTests] = useState<Record<string, ConnectionTestResult>>({});
-
-  const setTest = (id: string, result: ConnectionTestResult | undefined) =>
-    setTests((prev) => {
-      const next = { ...prev };
-      if (result) next[id] = result;
-      else delete next[id];
-      return next;
-    });
+  // Connection status and test results are shared with the other pages (in memory only).
+  const { statusOf, tests, setTest } = useConnections();
 
   const servers = state.status === "ready" ? state.servers : [];
   const hostKeys = state.status === "ready" ? state.hostKeys : {};
@@ -69,7 +62,7 @@ export default function ServersPage() {
     <>
       <PageHeader
         title="Servers"
-        subtitle="Your saved server profiles. You can test a server's login; persistent connections are not implemented yet."
+        subtitle="Manage your VPS servers, monitor system resources, access SSH terminals, and inspect Docker containers."
         actions={addButton}
       />
 
@@ -146,13 +139,15 @@ export default function ServersPage() {
                   {s.authMethod === "ssh_key" ? "SSH key" : "Password"}
                 </td>
                 <td className="hidden px-3 py-2 lg:table-cell">
-                  <ConnectionBadge />
+                  <ConnectionBadge status={statusOf(s.id)} />
                 </td>
                 <td className="hidden whitespace-nowrap px-3 py-2 lg:table-cell">
                   {tests[s.id] ? (
-                    <Badge tone={outcomeView(tests[s.id]!.outcome).tone}>
-                      {outcomeView(tests[s.id]!.outcome).label}
-                    </Badge>
+                    <span title="A connection test logs in once and disconnects; it does not keep a connection open.">
+                      <Badge tone={outcomeView(tests[s.id]!.outcome).tone}>
+                        {outcomeView(tests[s.id]!.outcome).label}
+                      </Badge>
+                    </span>
                   ) : (
                     <span className="text-xs text-muted">Not tested</span>
                   )}
@@ -183,6 +178,7 @@ export default function ServersPage() {
           </Table>
           {selected && (
             <ServerDetails
+              status={statusOf(selected.id)}
               extra={
                 <ConnectionTestPanel
                   key={selected.id}

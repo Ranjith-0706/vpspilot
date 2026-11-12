@@ -3,6 +3,7 @@ import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Badge } from "../ui";
+import { useConnections } from "../../hooks/useConnections";
 import { Button } from "../Field";
 import {
   closeTerminal,
@@ -44,6 +45,17 @@ export function TerminalView({
 }) {
   const container = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>({ kind: "connecting" });
+  const { setTerminal } = useConnections();
+
+  // Tell the rest of the app whether a session is open. Leaving the page closes the session,
+  // so the report is withdrawn on unmount.
+  useEffect(() => {
+    setTerminal(
+      serverId,
+      status.kind === "error" ? { kind: "error", message: status.message } : { kind: status.kind },
+    );
+  }, [serverId, status, setTerminal]);
+  useEffect(() => () => setTerminal(serverId, undefined), [serverId, setTerminal]);
 
   useEffect(() => {
     const host = container.current;

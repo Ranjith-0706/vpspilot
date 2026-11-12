@@ -4,6 +4,7 @@
 use crate::alerts::model::AlertEvent;
 use crate::alerts::service as alerts;
 use crate::error::AppError;
+use crate::history::service::{self as history, HistoryRecorder};
 use crate::servers::repo::now_ms;
 use crate::ssh::monitor::{self, MonitorConfig, MonitorEvent, MonitorState};
 use crate::ssh::service;
@@ -110,6 +111,47 @@ fn close_alerts(app: &AppHandle, server_id: &str) -> Vec<AlertEvent> {
     })
 }
 
+/// Stores a successful sample (thinned to one a minute) without blocking the async runtime.
+/// Failures are logged once per run and never affect monitoring; the next sample tries again.
+async fn record_history(
+    app: &AppHandle,
+    server_id: &str,
+    recorder: &mut HistoryRecorder,
+    event: &MonitorEvent,
+) {
+    let MonitorEvent::Sample { metrics } = event else {
+        return; // statuses, failures and stops are never stored as readings
+    };
+    if !recorder.due(metrics) {
+        return;
+    }
+    let (app, id, m) = (app.clone(), server_id.to_string(), metrics.clone());
+    let at = m.sampled_at;
+    let result = tokio::task::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn()?;
+        history::record_sample(&conn, &id, &m)
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => {
+            if recorder.stored(at) {
+                eprintln!("history storage recovered");
+            }
+        }
+        Ok(Err(e)) => {
+            if recorder.failed() {
+                eprintln!("history could not be stored: {e}");
+            }
+        }
+        Err(e) => {
+            if recorder.failed() {
+                eprintln!("history task failed: {e}");
+            }
+        }
+    }
+}
+
 /// Starts (or restarts) monitoring a server. Events stream back over `on_event`.
 #[tauri::command]
 pub async fn start_monitoring(
@@ -155,6 +197,7 @@ pub async fn start_monitoring(
     // is still ours (a restart may have replaced it).
     let monitors = state.monitor_registry();
     tokio::spawn(async move {
+        let mut recorder = HistoryRecorder::default();
         'events: while let Some(event) = rx.recv().await {
             let ends = matches!(
                 &event,
@@ -169,7 +212,10 @@ pub async fn start_monitoring(
                     break 'events;
                 }
             }
-            if on_event.send(StreamEvent::Monitor(event)).is_err() {
+            let sent = on_event.send(StreamEvent::Monitor(event.clone()));
+            // After the UI has its update, so a slow disk never delays the live view.
+            record_history(&app, &id, &mut recorder, &event).await;
+            if sent.is_err() {
                 break; // the frontend is gone; dropping `rx` makes the monitor stop
             }
             if ends {
@@ -212,6 +258,7 @@ mod tests {
         let status = |state| MonitorEvent::Status {
             state,
             message: None,
+            cause: None,
         };
         assert!(is_gap(&status(MonitorState::Connecting)));
         assert!(is_gap(&status(MonitorState::Retrying)));

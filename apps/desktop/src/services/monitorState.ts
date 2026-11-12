@@ -23,6 +23,7 @@ export function applyMonitorEvent(
     return {
       state: "online",
       message: undefined,
+      cause: undefined,
       latest: m,
       history: pushHistory(base.history, {
         t: m.sampledAt,
@@ -32,7 +33,7 @@ export function applyMonitorEvent(
     };
   }
   // Status: keep the last sample so the UI can show it as stale instead of blanking out.
-  return { ...base, state: event.state, message: event.message };
+  return { ...base, state: event.state, message: event.message, cause: event.cause };
 }
 
 /** Same thresholds as the usage bars: under 70% fine, under 85% warning, otherwise critical. */

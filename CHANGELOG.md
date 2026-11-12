@@ -17,6 +17,15 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
   `npm audit --omit=dev`), run on pull requests, on `main` and weekly.
 - React error boundary with a recovery screen that shows no error details.
 - `CONTRIBUTING.md`, `SECURITY.md` and this changelog.
+- `.gitattributes` (`* text=auto eol=lf`) so Windows checkouts keep LF line endings and
+  `prettier --check` passes.
+- Persistent monitoring history: successful samples are stored in SQLite (at most one a minute
+  per server), kept for 7 days by default (1 to 90, configurable in Settings) and removed in
+  the background. The Dashboard has a History tab with a server and time-range selector and CPU,
+  memory, disk and load charts, clearly labelled as recorded data rather than current status.
+  History is deleted with its server.
+- Monitor status events carry an optional `cause` for connect failures, so "Authentication
+  failed" is shown only when the backend reported it.
 
 ### Changed
 
@@ -28,7 +37,18 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
   current, and is not resolved because of the outage.
 - Profile and credential changes put the secret back if the database step fails, and the profile,
   its credential reference and its trusted host key now change in one transaction.
+- CI actions are pinned to commit SHAs, with `contents: read` permissions and no persisted
+  checkout credentials.
+- Dashboard and Servers now show the same connection status, derived from live monitoring and
+  terminal state: Monitoring active, Connected, Connecting, Reconnecting, Authentication failed,
+  Connection error or Not connected. A connection test never counts as a connection and is shown
+  separately as "Last test"; test results and terminal state now survive page navigation.
 - The credential form and error message explain the 2560-byte limit and which key types fit.
+
+### Fixed
+
+- The Servers page always showed "Not connected", even while the Dashboard showed live
+  monitoring, and its subtitle still said persistent connections were not implemented.
 
 ### Security
 
@@ -40,3 +60,6 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 - Windows only for credential storage; Linux servers only for monitoring and Docker.
 - Passphrase-protected keys, ssh-agent and host certificates are not supported.
 - No code signing or automatic updates yet.
+- History is stored once a minute, not per poll, and only while monitoring is running, so it has
+  gaps whenever monitoring was off.
+- A terminal session ends when you leave the Terminal page, so it is only visible there.
