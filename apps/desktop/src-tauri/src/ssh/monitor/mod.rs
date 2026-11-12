@@ -62,6 +62,10 @@ pub enum MonitorEvent {
         state: MonitorState,
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<String>,
+        /// Why a connect attempt failed (authentication, host key, unreachable...), when the
+        /// failure happened while connecting. Absent for failures after login.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cause: Option<Outcome>,
     },
     Sample {
         metrics: Metrics,
@@ -119,8 +123,21 @@ async fn emit(
     state: MonitorState,
     message: Option<String>,
 ) -> bool {
+    emit_with_cause(events, state, message, None).await
+}
+
+async fn emit_with_cause(
+    events: &mpsc::Sender<MonitorEvent>,
+    state: MonitorState,
+    message: Option<String>,
+    cause: Option<Outcome>,
+) -> bool {
     events
-        .send(MonitorEvent::Status { state, message })
+        .send(MonitorEvent::Status {
+            state,
+            message,
+            cause,
+        })
         .await
         .is_ok()
 }
@@ -237,10 +254,23 @@ pub fn spawn(
                 Ok(Err(failure)) => {
                     let (outcome, message, _) = explain(&failure, &params, &seen);
                     if !retryable(&failure, outcome) {
-                        let _ = emit(&events, MonitorState::Failed, Some(message)).await;
+                        let _ = emit_with_cause(
+                            &events,
+                            MonitorState::Failed,
+                            Some(message),
+                            Some(outcome),
+                        )
+                        .await;
                         return; // no Stopped event: this is a failure, not a stop
                     }
-                    if !emit(&events, MonitorState::Retrying, Some(message)).await {
+                    if !emit_with_cause(
+                        &events,
+                        MonitorState::Retrying,
+                        Some(message),
+                        Some(outcome),
+                    )
+                    .await
+                    {
                         return;
                     }
                     if let Some(r) = sleep_or_stop(backoff, &mut stop).await {
@@ -257,7 +287,14 @@ pub fn spawn(
                         params.port,
                         CONNECT_TIMEOUT.as_secs()
                     );
-                    if !emit(&events, MonitorState::Retrying, Some(message)).await {
+                    if !emit_with_cause(
+                        &events,
+                        MonitorState::Retrying,
+                        Some(message),
+                        Some(Outcome::Timeout),
+                    )
+                    .await
+                    {
                         return;
                     }
                     if let Some(r) = sleep_or_stop(backoff, &mut stop).await {

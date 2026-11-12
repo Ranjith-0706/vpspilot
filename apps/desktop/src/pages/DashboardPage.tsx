@@ -4,6 +4,7 @@ import { Card, MockBadge, PageHeader, StatCard } from "../components/ui";
 import { Button } from "../components/Field";
 import { LiveServerCard } from "../components/monitoring/LiveServerCard";
 import { DemoDashboard } from "../demo/DemoDashboard";
+import { useConnections } from "../hooks/useConnections";
 import { useMonitoring } from "../hooks/useMonitoring";
 import { useServers } from "../hooks/useServers";
 import { connectionBlocker } from "../services/serverReadiness";
@@ -23,6 +24,7 @@ function readHideDemo(): boolean {
 export default function DashboardPage() {
   const { state } = useServers();
   const { monitors, start, stop, activeAlerts } = useMonitoring();
+  const { statusOf } = useConnections();
   const [hideDemo, setHideDemo] = useState(readHideDemo);
 
   const servers = state.status === "ready" ? state.servers : [];
@@ -114,6 +116,7 @@ export default function DashboardPage() {
                 key={s.id}
                 server={s}
                 monitor={monitors[s.id]}
+                status={statusOf(s.id)}
                 blocker={connectionBlocker(s, hostKeys[s.id])}
                 alerts={activeAlerts.filter((a) => a.serverId === s.id)}
                 onStart={() => void start(s.id)}

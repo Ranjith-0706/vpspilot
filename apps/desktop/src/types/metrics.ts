@@ -1,4 +1,5 @@
 import type { AlertEvent } from "./alerts";
+import type { ConnectionTestOutcome } from "./servers";
 
 /** One monitoring sample from a server. Mirrors the Rust `Metrics` struct. */
 export interface Metrics {
@@ -24,7 +25,8 @@ export type MonitorStatus = "connecting" | "online" | "retrying" | "failed" | "s
 
 /** Events streamed from the Rust monitor. */
 export type MonitorEvent =
-  { type: "status"; state: MonitorStatus; message?: string } | { type: "sample"; metrics: Metrics };
+  | { type: "status"; state: MonitorStatus; message?: string; cause?: ConnectionTestOutcome }
+  | { type: "sample"; metrics: Metrics };
 
 /** An alert firing or resolving, found by evaluating the monitor's samples against the rules. */
 export interface AlertNotice {
@@ -45,6 +47,8 @@ export interface HistoryPoint {
 export interface ServerMonitor {
   state: MonitorStatus;
   message?: string | undefined;
+  /** Why the last connect attempt failed, when the backend knew (e.g. "auth_failed"). */
+  cause?: ConnectionTestOutcome | undefined;
   /** Last successful sample. Kept (as stale data) when the monitor retries, fails or stops. */
   latest?: Metrics | undefined;
   history: HistoryPoint[];

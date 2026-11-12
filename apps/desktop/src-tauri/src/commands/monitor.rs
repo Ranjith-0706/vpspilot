@@ -212,6 +212,7 @@ mod tests {
         let status = |state| MonitorEvent::Status {
             state,
             message: None,
+            cause: None,
         };
         assert!(is_gap(&status(MonitorState::Connecting)));
         assert!(is_gap(&status(MonitorState::Retrying)));

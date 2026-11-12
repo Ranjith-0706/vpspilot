@@ -4,21 +4,15 @@ import { Sparkline } from "./Sparkline";
 import { METRIC_LABEL, isAlertStale, severityOf } from "../../services/alertsState";
 import { formatKib, formatUptime } from "../../services/monitorState";
 import type { ActiveAlert } from "../../types/alerts";
-import type { Tone } from "../tones";
-import type { MonitorStatus, ServerMonitor } from "../../types/metrics";
+import { ConnectionBadge } from "../servers/ServerDetails";
+import type { ConnectionStatus } from "../../services/connectionStatus";
+import type { ServerMonitor } from "../../types/metrics";
 import type { ServerProfile } from "../../types/servers";
-
-const STATUS: Record<MonitorStatus, { label: string; tone: Tone }> = {
-  connecting: { label: "Connecting…", tone: "warn" },
-  online: { label: "Online", tone: "ok" },
-  retrying: { label: "Reconnecting…", tone: "warn" },
-  failed: { label: "Failed", tone: "bad" },
-  stopped: { label: "Stopped", tone: "neutral" },
-};
 
 export function LiveServerCard({
   server,
   monitor,
+  status,
   blocker,
   alerts,
   onStart,
@@ -26,6 +20,8 @@ export function LiveServerCard({
 }: {
   server: ServerProfile;
   monitor: ServerMonitor | undefined;
+  /** Connection status, shared with the Servers page. */
+  status: ConnectionStatus;
   /** Alerts firing for this server right now. */
   alerts: ActiveAlert[];
   /** Why monitoring cannot be started right now, if it can't. */
@@ -38,9 +34,6 @@ export function LiveServerCard({
     (monitor.state === "connecting" || monitor.state === "online" || monitor.state === "retrying");
   const latest = monitor?.latest;
   const stale = latest !== undefined && monitor?.state !== "online";
-  const status = monitor
-    ? STATUS[monitor.state]
-    : { label: "Not monitored", tone: "neutral" as Tone };
 
   return (
     <Card>
@@ -51,7 +44,7 @@ export function LiveServerCard({
             {server.username}@{server.host}:{server.port}
           </p>
         </div>
-        <Badge tone={status.tone}>{status.label}</Badge>
+        <ConnectionBadge status={status} />
       </div>
 
       {alerts.length > 0 && (

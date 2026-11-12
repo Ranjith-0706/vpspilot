@@ -1,6 +1,6 @@
 //! End-to-end monitor tests against the in-process SSH server (see client_tests.rs).
 
-use super::client::{AuthSecret, TestParams};
+use super::client::{AuthSecret, Outcome, TestParams};
 use super::client_tests::{
     Running, fingerprint, new_key, params, start_server, start_server_with_exec, stored,
 };
@@ -109,6 +109,7 @@ async fn stop_ends_the_task_with_a_stopped_event_and_no_more_samples() {
         if let MonitorEvent::Status {
             state: MonitorState::Stopped,
             message,
+            ..
         } = e
         {
             stopped = Some(message);
@@ -166,9 +167,16 @@ async fn wrong_password_fails_once_and_is_never_retried() {
 
     let mut failed = false;
     while let Some(e) = next(&mut rx).await {
-        if is_status(&e, MonitorState::Failed) {
+        if let MonitorEvent::Status {
+            state: MonitorState::Failed,
+            cause,
+            ..
+        } = &e
+        {
             failed = true;
+            assert_eq!(*cause, Some(Outcome::AuthFailed));
         }
+        assert!(!is_status(&e, MonitorState::Online), "{e:?}");
         assert!(
             !is_status(&e, MonitorState::Retrying),
             "must not retry a rejected credential"
@@ -197,9 +205,11 @@ async fn changed_host_key_fails_without_credentials_and_is_never_retried() {
         if let MonitorEvent::Status {
             state: MonitorState::Failed,
             message,
+            cause,
         } = &e
         {
             failed = true;
+            assert_eq!(*cause, Some(Outcome::HostKeyChanged));
             assert!(message.as_deref().unwrap().contains("does not match"));
         }
         assert!(!is_status(&e, MonitorState::Retrying));
@@ -225,8 +235,10 @@ async fn unreachable_server_is_retried_with_backoff_until_stopped() {
         if let Some(MonitorEvent::Status {
             state: MonitorState::Retrying,
             message,
+            cause,
         }) = next(&mut rx).await
         {
+            assert_eq!(cause, Some(Outcome::Unreachable));
             assert!(message.unwrap().contains("Could not reach"));
             retries += 1;
         }
@@ -244,6 +256,7 @@ async fn unparseable_output_is_reported_safely_and_retried_without_echoing_it() 
             MonitorEvent::Status {
                 state: MonitorState::Retrying,
                 message,
+                ..
             } => {
                 let m = message.unwrap();
                 assert!(m.contains("unexpected output"), "{m}");
@@ -282,6 +295,7 @@ async fn repeated_unparseable_output_ends_in_failed_instead_of_retrying_forever(
             MonitorEvent::Status {
                 state: MonitorState::Failed,
                 message,
+                ..
             } => {
                 let m = message.unwrap();
                 assert!(
@@ -329,6 +343,7 @@ async fn events_serialize_with_camel_case_and_a_type_tag() {
     let status = serde_json::to_string(&MonitorEvent::Status {
         state: MonitorState::Retrying,
         message: None,
+        cause: None,
     })
     .unwrap();
     assert_eq!(status, r#"{"type":"status","state":"retrying"}"#);

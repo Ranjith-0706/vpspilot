@@ -1,12 +1,15 @@
 import { Badge, Card } from "../ui";
 import { Button } from "../Field";
-import type { ConnectionState, ServerProfile } from "../../types/servers";
+import type { ConnectionStatus } from "../../services/connectionStatus";
+import type { ServerProfile } from "../../types/servers";
 
-// Real connectivity is not implemented yet, so every profile is not connected.
-const CONNECTION: ConnectionState = "not_connected";
-
-export function ConnectionBadge({ state = CONNECTION }: { state?: ConnectionState }) {
-  return <Badge tone="neutral">{state === "not_connected" ? "Not connected" : state}</Badge>;
+/** Shows a server's live connection status, the same one the Dashboard shows. */
+export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
+  return (
+    <span title={status.detail}>
+      <Badge tone={status.tone}>{status.label}</Badge>
+    </span>
+  );
 }
 
 const fmt = (ms: number) => new Date(ms).toLocaleString();
@@ -30,12 +33,14 @@ function Row({
 
 export function ServerDetails({
   server,
+  status,
   extra,
   onClose,
   onEdit,
   onDelete,
 }: {
   server: ServerProfile;
+  status: ConnectionStatus;
   extra?: React.ReactNode;
   onClose: () => void;
   onEdit: () => void;
@@ -47,8 +52,9 @@ export function ServerDetails({
         <div>
           <h2 className="text-base font-semibold">{server.name}</h2>
           <div className="mt-1">
-            <ConnectionBadge />
+            <ConnectionBadge status={status} />
           </div>
+          {status.detail && <p className="mt-1 text-xs text-muted">{status.detail}</p>}
         </div>
         <button
           type="button"
