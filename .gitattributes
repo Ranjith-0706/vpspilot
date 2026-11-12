@@ -1,0 +1,8 @@
+# Keep line endings identical on every platform. Without this, Windows checkouts (CI included)
+# get CRLF and `prettier --check` fails on every file.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary
+*.woff2 binary

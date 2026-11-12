@@ -1,0 +1,23 @@
+# Policy for `cargo audit` (run from this directory, and by CI). Anything not listed here fails the
+# build, so a NEW advisory is never silently accepted.
+
+[advisories]
+ignore = [
+  # RUSTSEC-2023-0071 "Marvin Attack" in `rsa` (timing side channel in RSA private-key operations).
+  #
+  # Why it is accepted for now:
+  #   * `rsa` 0.10.0 (the fixed version) exists, but both russh 0.65.0 and 0.65.1 pin
+  #     `rsa = "=0.10.0-rc.18"`, so it cannot be upgraded from this repository.
+  #   * Removing russh's `rsa` feature would stop every RSA private key (RSA-2048 keys are common
+  #     and fit the credential store) and every server that only offers an RSA host key from
+  #     working: a certain functional break to mitigate a low practical risk.
+  #   * VPSPilot only uses RSA for client-side *signatures* during public-key login, on the
+  #     user's own machine, against servers the user chose and whose host key they verified.
+  #     The advisory's attack needs an observer able to time private-key operations precisely.
+  #     That is a reduced exposure, not zero.
+  #
+  # Re-check when: russh releases a version that depends on rsa >= 0.10.0 (then remove this
+  # entry and update), or if the product decides to drop RSA support (then remove the `rsa`
+  # feature in Cargo.toml and this entry).
+  "RUSTSEC-2023-0071",
+]

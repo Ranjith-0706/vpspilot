@@ -54,7 +54,7 @@ const utf8Length = (s: string) => new TextEncoder().encode(s).length;
 export function validateSecret(secret: string): string | undefined {
   if (secret.trim() === "") return "Credential must not be empty.";
   if (utf8Length(secret) > LIMITS.secretMaxBytes)
-    return `Credential is too large for the OS credential store (max ${LIMITS.secretMaxBytes} bytes).`;
+    return `Credential is too large for the OS credential store (max ${LIMITS.secretMaxBytes} bytes). For SSH keys, ed25519, ECDSA and RSA-2048 keys fit; RSA-3072 and RSA-4096 keys are usually too large.`;
   return undefined;
 }
 

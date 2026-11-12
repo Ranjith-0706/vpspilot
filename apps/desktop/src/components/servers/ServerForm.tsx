@@ -159,9 +159,12 @@ export function ServerForm({
           label={isKey ? "Private key (optional)" : "Password (optional)"}
           error={errors.secret}
           hint={
-            server && hasCredential
+            (server && hasCredential
               ? "Leave blank to keep the stored credential. Stored in the OS credential store, never in the app database."
-              : "Optional for now. Stored in the OS credential store (Windows Credential Manager), never in the app database."
+              : "Optional for now. Stored in the OS credential store (Windows Credential Manager), never in the app database.") +
+            (isKey
+              ? " Paste an unencrypted private key: passphrase-protected keys are not supported. Keys over 2560 bytes do not fit (RSA-3072 and RSA-4096 are usually too large; ed25519, ECDSA and RSA-2048 fit)."
+              : "")
           }
         >
           {isKey ? (

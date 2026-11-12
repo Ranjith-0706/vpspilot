@@ -66,6 +66,14 @@ describe("validateServerForm", () => {
     expect(validateServerForm(withValues({ username })).errors.username).toBeDefined();
   });
 
+  it("tells the user which key types fit when a credential is too large", () => {
+    const message = validateSecret("x".repeat(LIMITS.secretMaxBytes + 1));
+    expect(message).toContain(String(LIMITS.secretMaxBytes));
+    expect(message).toMatch(/ed25519/);
+    expect(message).toMatch(/RSA-4096/);
+    expect(validateSecret("x".repeat(LIMITS.secretMaxBytes))).toBeUndefined();
+  });
+
   it("validates a provided secret", () => {
     expect(validateServerForm(withValues({ secret: "   " })).errors.secret).toBeDefined();
     expect(
