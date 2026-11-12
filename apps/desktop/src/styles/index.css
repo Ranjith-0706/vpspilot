@@ -43,10 +43,28 @@
   --color-bad: var(--bad);
 }
 
+html {
+  /* Compact, desktop-tool density: every rem-based size scales with this. */
+  font-size: 14px;
+}
+
 html,
 body,
 #root {
   height: 100%;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+body {
+  overflow: hidden;
 }
 
 body {

@@ -12,9 +12,17 @@ VPSPilot is a Tauri 2 desktop app.
 
 - The frontend may only call narrowly-scoped, typed Rust commands. Each command is listed in `src-tauri/build.rs` and granted by an explicit `allow-*` permission in `capabilities/default.json`.
 - No generic shell/command execution is exposed to the frontend.
-- Tauri capabilities stay minimal (`core:default` only); add permissions per feature.
+- Tauri capabilities stay minimal: `core:default` plus one explicit `allow-*` permission per app command (`capabilities/default.json`). No shell, filesystem, HTTP or opener plugins are enabled. Adding a command means adding it to `build.rs`, `generate_handler!` and the capability file.
 - No credentials in source. Server secrets live only in the OS credential store (Windows Credential Manager); SQLite stores a reference. No command can read a secret back.
 - Nothing runs `sudo` or destructive commands without explicit user approval.
+
+## UI shell
+
+The window is a compact desktop layout: a sidebar of pages (Dashboard, Servers, Docker, Terminal,
+Logs, Alerts, Settings, see `src/routes.ts`), a status footer, and a light/dark theme
+(`hooks/useTheme.tsx`). Monitoring state lives in a provider above the router so it survives
+navigation. The whole tree sits inside an `ErrorBoundary`, so an unexpected render error shows a
+recovery screen instead of a blank window.
 
 ## Local storage (Milestone 2)
 
@@ -24,6 +32,18 @@ VPSPilot is a Tauri 2 desktop app.
 - Rust layout: `servers/model.rs` (types + validation) -> `servers/repo.rs` (parameterized SQL) ->
   `servers/service.rs` (use-cases) -> `commands/servers.rs` (thin Tauri wrappers). `credentials.rs`
   holds the `CredentialStore` trait and the Windows Credential Manager implementation.
+- **Profile and credential changes** span SQLite and the OS credential store, which cannot share
+  a transaction. The order is: take the secret out of the store (remembering it), make all SQLite
+  changes in one transaction, and if that fails put the secret back. If the restore also fails the
+  error says to enter the credential again; the profile then simply has no usable credential.
+- The React tree is wrapped in an `ErrorBoundary` (`components/ErrorBoundary.tsx`) that shows a
+  recovery screen with a reload button and never displays error details.
+- **Credential limits.** A secret is at most 2560 bytes (the Windows Credential Manager blob
+  limit), enforced in both the frontend and Rust. Measured unencrypted private keys: ed25519 about
+  0.4 KB, ECDSA P-256 about 0.5 KB, RSA-2048 about 1.7-1.8 KB (all fit), RSA-3072 about
+  2.5-2.6 KB (OpenSSH format is too large, PEM only just fits) and RSA-4096 about 3.2-3.4 KB (does
+  not fit). Passphrase-protected keys are not supported. The form and the error message both
+  say so.
 - Validation runs in both the frontend (`services/serverValidation.ts`) and Rust; Rust is authoritative.
 - Demo data lives in `src/demo/` and is only used by the Dashboard, in its labeled demo section.
   Every page is otherwise real: Alerts (Milestone 6), Docker (7) and Logs (8).
@@ -87,6 +107,13 @@ rendered with xterm.js. Nothing runs on the local machine.
 - **Input:** typed text is sent as-is; pastes are split into chunks (backend cap 64 KiB per write).
 - **Limits:** at most 8 concurrent sessions; terminal size 1-1000 per axis; keepalive every 30 s;
   a closed window or dropped channel ends the remote shell.
+- **Lifecycle rules** (`ssh/terminal_registry.rs`): the session cap is reserved before connecting
+  and committed after, under one lock, so concurrent opens cannot exceed it. Each server has a
+  revision that deleting it, changing its identity or credential, or forgetting its host key
+  bumps; a terminal that was still connecting when that happened is closed instead of registered.
+  A reload or destroyed window closes every terminal (`on_page_load`, `on_window_event` in
+  `lib.rs`), and an idle session sends an empty-output probe every 30 s so a vanished frontend
+  is noticed and the shell is closed.
 - **Not supported yet:** passphrase-protected keys, multiple tabs, session logging, SFTP,
   scrollback persistence, reconnect-on-network-change.
 ## Live monitoring (Milestone 5)
@@ -116,8 +143,8 @@ The Dashboard shows real CPU, memory, disk, load and uptime for saved servers. M
   provider above the router so it survives page navigation. Samples are kept in memory only (last 60
   per server) and are not stored in SQLite.
 - **Demo data** stays on the Dashboard in its own clearly labelled, hideable section.
-- **Not supported yet:** non-Linux servers, per-process stats, network/disk I/O, alert thresholds,
-  persisted history, Docker metrics.
+- **Not supported yet:** non-Linux servers, per-process stats, network/disk I/O, persisted
+  history, Docker metrics. (Threshold alerts arrived in Milestone 6.)
 ## Alerts (Milestone 6)
 
 Threshold rules over the live monitoring samples. Nothing new runs on a server: alerts are
@@ -140,6 +167,11 @@ computed locally from the samples Milestone 5 already collects.
 - **Where it runs:** the monitor's forwarder task evaluates each sample, writes the events, and
   streams them to the UI on the same channel (`{"type":"alert", ...}`). The currently-firing set
   lives in memory only and ends with monitoring; it is not restored after a restart.
+- **Gaps in monitoring:** when a server is connecting or reconnecting no samples arrive, so the
+  forwarder tells the engine (`AlertEngine::gap`): pending "N in a row" streaks start again, but
+  an alert that is already firing keeps firing (an unreachable server has not recovered) and
+  nothing is written to history. The first sample after the gap decides whether it resolves. The
+  UI shows such an alert as "status unknown" until fresh samples arrive (`isAlertStale`).
 - **Failure isolation:** an alert evaluation error is logged and never interrupts monitoring.
 - **Locking:** the alert engine and the database are never held across an await. Code that holds
   the database may take the monitor registry afterwards, never the reverse, so the forwarder

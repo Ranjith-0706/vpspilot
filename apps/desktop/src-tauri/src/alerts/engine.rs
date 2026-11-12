@@ -150,6 +150,21 @@ impl AlertEngine {
         out
     }
 
+    /// Samples from `server_id` stopped arriving (connecting, or reconnecting after a network
+    /// problem). Checks on either side of the gap are not "in a row", so every pending streak
+    /// starts again.
+    ///
+    /// Nothing else changes: an alert that is firing keeps firing, because an unreachable server
+    /// has not recovered, and no transition is produced so history is untouched. The first
+    /// sample after the gap decides whether it resolves.
+    pub fn gap(&mut self, server_id: &str) {
+        for ((_, server), track) in self.tracks.iter_mut() {
+            if server == server_id {
+                track.streak = 0;
+            }
+        }
+    }
+
     /// Monitoring of `server_id` ended: resolve everything it had firing and forget its state.
     pub fn close_server(&mut self, server_id: &str, now: i64) -> Vec<Transition> {
         let keys: Vec<(String, String)> = self
@@ -392,5 +407,76 @@ mod tests {
         cpu(&mut e, &rules, 95.0, 2);
         assert!(cpu(&mut e, &rules, f64::NAN, 3).is_empty());
         assert_eq!(e.active().len(), 1);
+    }
+
+    // ----- gaps in monitoring (disconnect, retry, reconnect, recovery) -----
+
+    fn feed(e: &mut AlertEngine, server: &str, rules: &[AlertRule], cpu: f64, at: i64) -> usize {
+        e.evaluate(server, rules, &metrics(cpu, 0.0, 0.0), at).len()
+    }
+
+    #[test]
+    fn a_gap_restarts_the_streak_so_checks_either_side_are_not_in_a_row() {
+        let rules = [rule("r1", Metric::Cpu, 90, 3)];
+        let mut e = AlertEngine::default();
+        assert_eq!(feed(&mut e, "s1", &rules, 95.0, 1), 0);
+        assert_eq!(feed(&mut e, "s1", &rules, 95.0, 2), 0);
+        e.gap("s1"); // disconnect + retry
+        assert_eq!(
+            feed(&mut e, "s1", &rules, 95.0, 3),
+            0,
+            "only one check since the gap"
+        );
+        assert_eq!(feed(&mut e, "s1", &rules, 95.0, 4), 0);
+        assert_eq!(
+            feed(&mut e, "s1", &rules, 95.0, 5),
+            1,
+            "three in a row after the gap"
+        );
+    }
+
+    #[test]
+    fn a_gap_does_not_resolve_or_duplicate_a_firing_alert() {
+        let rules = [rule("r1", Metric::Cpu, 90, 1)];
+        let mut e = AlertEngine::default();
+        assert_eq!(feed(&mut e, "s1", &rules, 95.0, 1), 1);
+        e.gap("s1");
+        e.gap("s1"); // repeated retries
+        assert_eq!(e.active().len(), 1, "still firing while unreachable");
+        assert_eq!(e.active()[0].since, 1);
+        // Reconnect with the problem still there: no new event, value refreshed.
+        assert_eq!(feed(&mut e, "s1", &rules, 97.0, 2), 0);
+        assert_eq!(e.active().len(), 1);
+        assert_eq!(e.active()[0].value, 97.0);
+        assert_eq!(
+            e.active()[0].since,
+            1,
+            "it is the same alert, not a new one"
+        );
+    }
+
+    #[test]
+    fn recovery_after_a_gap_resolves_with_the_fresh_value() {
+        let rules = [rule("r1", Metric::Cpu, 90, 1)];
+        let mut e = AlertEngine::default();
+        feed(&mut e, "s1", &rules, 95.0, 1);
+        e.gap("s1");
+        let out = e.evaluate("s1", &rules, &metrics(20.0, 0.0, 0.0), 9);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].state, AlertState::Resolved);
+        assert_eq!(out[0].value, Some(20.0));
+        assert!(e.active().is_empty());
+    }
+
+    #[test]
+    fn a_gap_only_affects_the_server_it_names() {
+        let rules = [rule("r1", Metric::Cpu, 90, 2)];
+        let mut e = AlertEngine::default();
+        feed(&mut e, "s1", &rules, 95.0, 1);
+        feed(&mut e, "s2", &rules, 95.0, 1);
+        e.gap("s1");
+        assert_eq!(feed(&mut e, "s1", &rules, 95.0, 2), 0, "s1 restarted");
+        assert_eq!(feed(&mut e, "s2", &rules, 95.0, 2), 1, "s2 unaffected");
+        e.gap("nobody"); // no-op
     }
 }

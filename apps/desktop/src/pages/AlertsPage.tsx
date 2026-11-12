@@ -14,6 +14,8 @@ import {
   describeCondition,
   describeEvent,
   severityOf,
+  isAlertStale,
+  staleAlertNote,
 } from "../services/alertsState";
 import { toAppError } from "../services/ipc";
 import type { AlertRule, AlertRuleInput } from "../types/alerts";
@@ -28,7 +30,7 @@ type Modal =
 const time = (ms: number) => new Date(ms).toLocaleString();
 
 export default function AlertsPage() {
-  const { activeAlerts, alertVersion } = useMonitoring();
+  const { activeAlerts, alertVersion, monitors } = useMonitoring();
   const { state: data, reload } = useAlertData(alertVersion);
   const { state: serversState } = useServers();
   const [modal, setModal] = useState<Modal>(null);
@@ -97,7 +99,7 @@ export default function AlertsPage() {
       />
 
       {notice && (
-        <p role="alert" className="mb-4 rounded-lg bg-bad/10 p-3 text-sm text-bad">
+        <p role="alert" className="mb-4 rounded-md bg-bad/10 p-3 text-sm text-bad">
           {notice}
         </p>
       )}
@@ -143,8 +145,17 @@ export default function AlertsPage() {
                           Reached {Math.round(a.value)}% (limit {a.threshold}%) · since{" "}
                           {time(a.since)}
                         </p>
+                        {isAlertStale(monitors[a.serverId]) && (
+                          <p role="status" className="mt-1 text-xs text-warn">
+                            {staleAlertNote(monitors[a.serverId])}
+                          </p>
+                        )}
                       </div>
-                      <Badge tone={severityOf(a.threshold)}>firing</Badge>
+                      {isAlertStale(monitors[a.serverId]) ? (
+                        <Badge tone="neutral">status unknown</Badge>
+                      ) : (
+                        <Badge tone={severityOf(a.threshold)}>firing</Badge>
+                      )}
                     </div>
                   </Card>
                 ))}
@@ -174,14 +185,14 @@ export default function AlertsPage() {
               <Table headers={["Applies to", "Condition", "Status", ""]}>
                 {rules.map((r) => (
                   <tr key={r.id} className={r.enabled ? "" : "opacity-60"}>
-                    <td className="px-4 py-3 font-medium">{serverName(r.serverId)}</td>
-                    <td className="px-4 py-3">{describeCondition(r)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-2 font-medium">{serverName(r.serverId)}</td>
+                    <td className="px-3 py-2">{describeCondition(r)}</td>
+                    <td className="px-3 py-2">
                       <Badge tone={r.enabled ? "ok" : "neutral"}>
                         {r.enabled ? "Enabled" : "Disabled"}
                       </Badge>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
                       <RowAction
                         label={r.enabled ? "Disable" : "Enable"}
                         onClick={() => void toggle(r)}

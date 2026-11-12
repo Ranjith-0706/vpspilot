@@ -1,7 +1,7 @@
 import { Badge, Card, UsageBar } from "../ui";
 import { Button } from "../Field";
 import { Sparkline } from "./Sparkline";
-import { METRIC_LABEL, severityOf } from "../../services/alertsState";
+import { METRIC_LABEL, isAlertStale, severityOf } from "../../services/alertsState";
 import { formatKib, formatUptime } from "../../services/monitorState";
 import type { ActiveAlert } from "../../types/alerts";
 import type { Tone } from "../tones";
@@ -58,9 +58,15 @@ export function LiveServerCard({
         <ul aria-label="Active alerts" className="mt-3 flex flex-wrap gap-2">
           {alerts.map((a) => (
             <li key={a.ruleId}>
-              <Badge tone={severityOf(a.threshold)}>
-                {METRIC_LABEL[a.metric]} {Math.round(a.value)}% (limit {a.threshold}%)
-              </Badge>
+              {isAlertStale(monitor) ? (
+                <Badge tone="neutral">
+                  {METRIC_LABEL[a.metric]} alert: status unknown (last {Math.round(a.value)}%)
+                </Badge>
+              ) : (
+                <Badge tone={severityOf(a.threshold)}>
+                  {METRIC_LABEL[a.metric]} {Math.round(a.value)}% (limit {a.threshold}%)
+                </Badge>
+              )}
             </li>
           ))}
         </ul>
@@ -69,7 +75,7 @@ export function LiveServerCard({
       {monitor?.message && (monitor.state === "failed" || monitor.state === "retrying") && (
         <p
           role={monitor.state === "failed" ? "alert" : "status"}
-          className={`mt-3 rounded-lg p-2 text-xs ${monitor.state === "failed" ? "bg-bad/10 text-bad" : "bg-warn/10 text-warn"}`}
+          className={`mt-3 rounded-md p-2 text-xs ${monitor.state === "failed" ? "bg-bad/10 text-bad" : "bg-warn/10 text-warn"}`}
         >
           {monitor.message}
         </p>
@@ -127,7 +133,7 @@ export function LiveServerCard({
       )}
 
       {blocker && !active && (
-        <p role="status" className="mt-3 rounded-lg bg-warn/10 p-2 text-xs text-warn">
+        <p role="status" className="mt-3 rounded-md bg-warn/10 p-2 text-xs text-warn">
           {blocker}
         </p>
       )}

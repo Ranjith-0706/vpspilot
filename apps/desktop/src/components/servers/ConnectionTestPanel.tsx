@@ -120,13 +120,13 @@ export function ConnectionTestPanel({
       </Button>
 
       {error && (
-        <p role="alert" className="mt-3 rounded-lg bg-bad/10 p-3 text-sm text-bad">
+        <p role="alert" className="mt-3 rounded-md bg-bad/10 p-3 text-sm text-bad">
           {error}
         </p>
       )}
 
       {result && view && (
-        <div role="status" className={`mt-4 rounded-lg border p-3 text-sm ${BOX[view.tone]}`}>
+        <div role="status" className={`mt-4 rounded-md border p-3 text-sm ${BOX[view.tone]}`}>
           <div className="flex items-center justify-between gap-2">
             <Badge tone={view.tone}>{view.label}</Badge>
             <span className="text-xs text-muted">

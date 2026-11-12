@@ -7,10 +7,14 @@ import {
   dropServerAlerts,
   formatWindow,
   initialRuleValues,
+  isAlertStale,
+  staleAlertNote,
   severityOf,
   validateRuleForm,
 } from "./alertsState";
+import { applyMonitorEvent } from "./monitorState";
 import type { ActiveAlert, AlertEvent, RuleFormValues } from "../types/alerts";
+import type { Metrics, MonitorEvent, ServerMonitor } from "../types/metrics";
 
 const firing = (over: Partial<AlertEvent> = {}): AlertEvent => ({
   id: 1,
@@ -180,5 +184,45 @@ describe("defaults", () => {
       };
       expect(validateRuleForm(form).input).toEqual(r);
     }
+  });
+});
+
+describe("alerts during a server outage", () => {
+  const sample = (cpuPercent: number): MonitorEvent => ({
+    type: "sample",
+    metrics: { cpuPercent, sampledAt: 1 } as Metrics,
+  });
+  const status = (state: "connecting" | "retrying"): MonitorEvent => ({ type: "status", state });
+  const play = (events: MonitorEvent[]) =>
+    events.reduce<ServerMonitor | undefined>((m, e) => applyMonitorEvent(m, e), undefined);
+
+  it("is confirmed only while fresh samples arrive", () => {
+    expect(isAlertStale(play([sample(95)]))).toBe(false);
+  });
+
+  it("goes unknown on disconnect and while retrying, without being resolved", () => {
+    const alerts = applyAlertEvent([], firing());
+    const retrying = play([sample(95), status("retrying")]);
+    expect(isAlertStale(retrying)).toBe(true);
+    // The monitor reducer never touches alerts; the alert is still listed.
+    expect(alerts).toHaveLength(1);
+    expect(staleAlertNote(retrying)).toMatch(/not responding/i);
+  });
+
+  it("stays unknown while reconnecting and is confirmed again by the first new sample", () => {
+    const base = [sample(95), status("retrying"), status("connecting")];
+    expect(isAlertStale(play(base))).toBe(true);
+    expect(isAlertStale(play([...base, sample(96)]))).toBe(false);
+  });
+
+  it("is unknown when nothing is monitoring the server (e.g. after a window reload)", () => {
+    expect(isAlertStale(undefined)).toBe(true);
+    expect(staleAlertNote(undefined)).toMatch(/not being monitored/i);
+  });
+
+  it("recovers: a resolved event after reconnecting clears the alert", () => {
+    let alerts = applyAlertEvent([], firing());
+    alerts = applyAlertEvent(alerts, firing({ id: 2, state: "resolved", value: 12, at: 2000 }));
+    expect(alerts).toHaveLength(0);
   });
 });

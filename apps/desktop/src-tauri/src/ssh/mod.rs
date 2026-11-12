@@ -11,5 +11,6 @@ pub mod monitor;
 mod monitor_tests;
 pub mod service;
 pub mod terminal;
+pub mod terminal_registry;
 #[cfg(test)]
 mod terminal_tests;

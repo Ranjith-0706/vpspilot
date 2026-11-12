@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export const inputClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent aria-[invalid=true]:border-bad";
+  "w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm outline-none transition-colors focus:border-accent focus:ring-1 focus:ring-accent aria-[invalid=true]:border-bad";
 
 export function Field({
   id,
@@ -18,7 +18,7 @@ export function Field({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium">
+      <label htmlFor={id} className="mb-1 block text-xs font-medium text-muted">
         {label}
       </label>
       {children}
@@ -39,15 +39,15 @@ export function Button({
   variant?: "primary" | "secondary" | "danger";
 }) {
   const styles = {
-    primary: "bg-accent text-white hover:opacity-90",
-    secondary: "border border-border text-fg hover:bg-surface-2",
-    danger: "bg-bad text-white hover:opacity-90",
+    primary: "bg-accent text-white hover:brightness-110",
+    secondary: "border border-border bg-surface text-fg hover:bg-surface-2",
+    danger: "bg-bad text-white hover:brightness-110",
   }[variant];
   return (
     <button
       type="button"
       {...props}
-      className={`rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${styles} ${props.className ?? ""}`}
+      className={`rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${styles} ${props.className ?? ""}`}
     />
   );
 }

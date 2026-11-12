@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Button, Field, inputClass } from "../Field";
+import { DIALOG_FORM, DialogBody, DialogFooter } from "../Dialog";
 import {
   LIMITS,
   METRICS,
@@ -70,101 +71,102 @@ export function AlertRuleForm({
   }
 
   return (
-    <form onSubmit={(e) => void handleSubmit(e)} noValidate className="space-y-4">
-      <Field id="rule-serverId" label="Applies to" error={errors.serverId}>
-        <select
-          {...props("serverId")}
-          className={inputClass}
-          value={values.serverId}
-          onChange={(e) => set("serverId", e.target.value)}
-        >
-          <option value="">All servers</option>
-          {servers.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field id="rule-metric" label="Watch" error={errors.metric}>
-        <select
-          {...props("metric")}
-          className={inputClass}
-          value={values.metric}
-          onChange={(e) => set("metric", e.target.value as AlertMetric)}
-        >
-          {METRICS.map((m) => (
-            <option key={m} value={m}>
-              {METRIC_LABEL[m]}
-              {m === "disk" ? " (the / filesystem)" : " usage"}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Field
-          id="rule-threshold"
-          label="Alert at or above (%)"
-          error={errors.threshold}
-          hint={`${LIMITS.thresholdMin} to ${LIMITS.thresholdMax}`}
-        >
-          <input
-            {...props("threshold")}
+    <form onSubmit={(e) => void handleSubmit(e)} noValidate className={DIALOG_FORM}>
+      <DialogBody>
+        <Field id="rule-serverId" label="Applies to" error={errors.serverId}>
+          <select
+            {...props("serverId")}
             className={inputClass}
-            value={values.threshold}
-            inputMode="numeric"
-            onChange={(e) => set("threshold", e.target.value)}
-            autoFocus
-          />
+            value={values.serverId}
+            onChange={(e) => set("serverId", e.target.value)}
+          >
+            <option value="">All servers</option>
+            {servers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
         </Field>
-        <Field
-          id="rule-consecutive"
-          label="For this many checks"
-          error={errors.consecutive}
-          hint="Avoids alerts from brief spikes"
-        >
-          <input
-            {...props("consecutive")}
+
+        <Field id="rule-metric" label="Watch" error={errors.metric}>
+          <select
+            {...props("metric")}
             className={inputClass}
-            value={values.consecutive}
-            inputMode="numeric"
-            onChange={(e) => set("consecutive", e.target.value)}
-          />
+            value={values.metric}
+            onChange={(e) => set("metric", e.target.value as AlertMetric)}
+          >
+            {METRICS.map((m) => (
+              <option key={m} value={m}>
+                {METRIC_LABEL[m]}
+                {m === "disk" ? " (the / filesystem)" : " usage"}
+              </option>
+            ))}
+          </select>
         </Field>
-      </div>
 
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={values.enabled}
-          onChange={(e) => set("enabled", e.target.checked)}
-        />
-        Enabled
-      </label>
+        <div className="grid grid-cols-2 gap-3">
+          <Field
+            id="rule-threshold"
+            label="Alert at or above (%)"
+            error={errors.threshold}
+            hint={`${LIMITS.thresholdMin} to ${LIMITS.thresholdMax}`}
+          >
+            <input
+              {...props("threshold")}
+              className={inputClass}
+              value={values.threshold}
+              inputMode="numeric"
+              onChange={(e) => set("threshold", e.target.value)}
+              autoFocus
+            />
+          </Field>
+          <Field
+            id="rule-consecutive"
+            label="For this many checks"
+            error={errors.consecutive}
+            hint="Avoids alerts from brief spikes"
+          >
+            <input
+              {...props("consecutive")}
+              className={inputClass}
+              value={values.consecutive}
+              inputMode="numeric"
+              onChange={(e) => set("consecutive", e.target.value)}
+            />
+          </Field>
+        </div>
 
-      {preview && (
-        <p className="rounded-lg bg-surface-2 p-3 text-xs text-muted">
-          Alert when {describeCondition(preview)}. It clears once the value is clearly back below
-          the threshold. Alerts are only checked while the server is being monitored.
-        </p>
-      )}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={values.enabled}
+            onChange={(e) => set("enabled", e.target.checked)}
+          />
+          Enabled
+        </label>
 
-      {formError && (
-        <p role="alert" className="rounded-lg bg-bad/10 p-3 text-sm text-bad">
-          {formError}
-        </p>
-      )}
+        {preview && (
+          <p className="rounded-md bg-surface-2 p-3 text-xs text-muted">
+            Alert when {describeCondition(preview)}. It clears once the value is clearly back below
+            the threshold. Alerts are only checked while the server is being monitored.
+          </p>
+        )}
 
-      <div className="flex justify-end gap-2 pt-2">
+        {formError && (
+          <p role="alert" className="rounded-md bg-bad/10 p-3 text-sm text-bad">
+            {formError}
+          </p>
+        )}
+      </DialogBody>
+      <DialogFooter>
         <Button onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={busy}>
           {busy ? "Saving…" : rule ? "Save changes" : "Add rule"}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   );
 }

@@ -123,13 +123,13 @@ export default function DockerPage() {
           </p>
 
           {blocker && (
-            <p role="status" className="mt-4 rounded-lg bg-warn/10 p-3 text-sm text-warn">
+            <p role="status" className="mt-4 rounded-md bg-warn/10 p-3 text-sm text-warn">
               {blocker}
             </p>
           )}
 
           {load?.error && (
-            <p role="alert" className="mt-4 rounded-lg bg-bad/10 p-3 text-sm text-bad">
+            <p role="alert" className="mt-4 rounded-md bg-bad/10 p-3 text-sm text-bad">
               {load.error}
             </p>
           )}
@@ -171,7 +171,7 @@ export default function DockerPage() {
               </div>
 
               {result.truncated && (
-                <p role="status" className="mb-3 rounded-lg bg-warn/10 p-3 text-sm text-warn">
+                <p role="status" className="mb-3 rounded-md bg-warn/10 p-3 text-sm text-warn">
                   This server has more containers than can be shown. Only the first{" "}
                   {result.containers.length} are listed.
                 </p>
@@ -189,22 +189,22 @@ export default function DockerPage() {
                 <Table headers={["Name", "Image", "State", "Status", "Ports", ""]}>
                   {shown.map((c) => (
                     <tr key={c.id}>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2">
                         <p className="font-medium">{c.name}</p>
                         <p className="font-mono text-xs text-muted">{c.id}</p>
                       </td>
-                      <td className="max-w-56 break-words px-4 py-3 text-muted">{c.image}</td>
-                      <td className="whitespace-nowrap px-4 py-3">
+                      <td className="max-w-56 break-words px-3 py-2 text-muted">{c.image}</td>
+                      <td className="whitespace-nowrap px-3 py-2">
                         <div className="flex flex-wrap gap-1">
                           <Badge tone={STATE_TONE[c.state]}>{c.state}</Badge>
                           {c.health && <Badge tone={HEALTH_TONE[c.health]}>{c.health}</Badge>}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-muted">{c.status}</td>
-                      <td className="max-w-64 break-words px-4 py-3 text-xs text-muted">
+                      <td className="px-3 py-2 text-muted">{c.status}</td>
+                      <td className="max-w-64 break-words px-3 py-2 text-xs text-muted">
                         {c.ports || "—"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
                         <Link
                           to={`${ROUTES.logs.path}?${new URLSearchParams({
                             server: server.id,

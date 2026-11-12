@@ -186,7 +186,7 @@ pub fn validate_secret(secret: &str) -> Result<(), AppError> {
         return Err(AppError::validation(
             "secret",
             format!(
-                "Credential is too large for the OS credential store (max {SECRET_MAX_BYTES} bytes)."
+                "Credential is too large for the OS credential store (max {SECRET_MAX_BYTES} bytes). For SSH keys, ed25519, ECDSA and RSA-2048 keys fit; RSA-3072 and RSA-4096 keys are usually too large."
             ),
         ));
     }
@@ -310,6 +310,9 @@ mod tests {
         assert!(validate_secret("hunter2").is_ok());
         assert!(validate_secret("   ").is_err());
         assert!(validate_secret(&"x".repeat(SECRET_MAX_BYTES + 1)).is_err());
+        let too_big = validate_secret(&"x".repeat(SECRET_MAX_BYTES + 1)).unwrap_err();
+        assert!(too_big.message.contains("ed25519") && too_big.message.contains("RSA-4096"));
+        assert!(validate_secret(&"x".repeat(SECRET_MAX_BYTES)).is_ok());
     }
 
     #[test]

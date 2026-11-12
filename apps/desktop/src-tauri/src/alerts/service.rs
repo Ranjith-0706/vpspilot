@@ -84,6 +84,12 @@ pub fn process_sample(
     persist(conn, engine.evaluate(server_id, &rules, metrics, now))
 }
 
+/// Samples from a server stopped arriving (it is connecting or reconnecting). Resets pending
+/// streaks only; firing alerts stay as they are and nothing is written to history.
+pub fn note_gap(engine: &mut AlertEngine, server_id: &str) {
+    engine.gap(server_id);
+}
+
 /// Monitoring of a server ended: resolve its alerts. A server that was just deleted has no
 /// history to write to, so its alerts are simply dropped.
 pub fn close_server(
@@ -342,5 +348,38 @@ mod tests {
         let conn = open_in_memory();
         assert!(list_events(&conn, Some(0)).unwrap().is_empty());
         assert!(list_events(&conn, Some(u32::MAX)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_outage_neither_resolves_nor_duplicates_and_history_stays_clean() {
+        let conn = open_in_memory();
+        let mut engine = AlertEngine::default();
+        server(&conn, "s1");
+        add_rule(&conn, &input(None, Metric::Cpu, 90, 1), 0).unwrap();
+
+        let fired = process_sample(&conn, &mut engine, "s1", &sample(95.0), 10).unwrap();
+        assert_eq!(fired.len(), 1);
+
+        // Disconnect, several retries, reconnect: still the same single firing alert.
+        for _ in 0..3 {
+            note_gap(&mut engine, "s1");
+        }
+        assert_eq!(engine.active().len(), 1);
+        let still = process_sample(&conn, &mut engine, "s1", &sample(96.0), 20).unwrap();
+        assert!(
+            still.is_empty(),
+            "no duplicate firing event after reconnect"
+        );
+        assert_eq!(
+            list_events(&conn, None).unwrap().len(),
+            1,
+            "history unchanged by the outage"
+        );
+
+        // Recovery after the reconnect resolves it with the real value.
+        let done = process_sample(&conn, &mut engine, "s1", &sample(10.0), 30).unwrap();
+        assert_eq!(done.len(), 1);
+        assert_eq!(done[0].state, AlertState::Resolved);
+        assert_eq!(list_events(&conn, None).unwrap().len(), 2);
     }
 }

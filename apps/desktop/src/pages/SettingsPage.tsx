@@ -25,7 +25,7 @@ export default function SettingsPage() {
                 role="radio"
                 aria-checked={preference === o.value}
                 onClick={() => setPreference(o.value)}
-                className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+                className={`rounded-md border px-4 py-2 text-sm font-medium ${
                   preference === o.value
                     ? "border-accent bg-accent/15 text-accent"
                     : "border-border text-muted hover:text-fg"

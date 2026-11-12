@@ -20,6 +20,23 @@ const DB_FILE: &str = "vpspilot.db";
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Terminals belong to the webview that opened them. A reload starts a new page that
+        // knows nothing about them, and a destroyed window can never receive their output, so
+        // end them (and any still connecting) rather than leave them running unowned.
+        .on_page_load(|webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+                && let Some(state) = webview.try_state::<state::AppState>()
+            {
+                state.close_all_terminals();
+            }
+        })
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed)
+                && let Some(state) = window.try_state::<state::AppState>()
+            {
+                state.close_all_terminals();
+            }
+        })
         .setup(|app| {
             let db = app
                 .path()

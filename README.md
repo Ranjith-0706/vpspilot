@@ -13,6 +13,14 @@ Open-source VPS monitoring and management desktop app with Docker insights and a
 
 Tauri 2 - React + TypeScript + Vite - Rust (russh, SQLite) - Tailwind CSS - xterm.js. Planned: Go Linux agent.
 
+## Supported credentials
+
+- **Password**, or an **unencrypted SSH private key** (OpenSSH or PEM format).
+- Passphrase-protected keys, ssh-agent, host certificates and jump hosts are not supported yet.
+- Secrets are stored in the Windows Credential Manager, which limits each to **2560 bytes**.
+  ed25519, ECDSA and RSA-2048 keys fit; RSA-3072 and RSA-4096 keys usually do not. Generate an
+  ed25519 key with `ssh-keygen -t ed25519` if yours is too large.
+
 ## Quick start
 
 See [docs/development/setup.md](docs/development/setup.md) for prerequisites.
@@ -31,6 +39,13 @@ npm run tauri dev
 - `scripts` - helper scripts
 
 See [docs/architecture/overview.md](docs/architecture/overview.md).
+
+## Contributing and security
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) - setup, checks and the security rules for changes.
+- [SECURITY.md](SECURITY.md) - how to report a vulnerability, and what is in scope.
+- [CHANGELOG.md](CHANGELOG.md) - what changed.
+- Audit reports: [docs/audits](docs/audits).
 
 ## License
 

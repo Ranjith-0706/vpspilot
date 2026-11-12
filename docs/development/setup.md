@@ -25,3 +25,11 @@ Full guide: https://tauri.app/start/prerequisites/
 | `npm run format` / `format:check` | Prettier |
 | `npm run build` | Typecheck + production frontend build |
 | `npm run tauri build` | Package the desktop installer |
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: type check, ESLint,
+Prettier, frontend tests and build, then `cargo fmt --check`, `cargo clippy -- -D warnings` and
+`cargo test` on Windows, plus a dependency audit (`cargo audit` and `npm audit --omit=dev`) that
+also runs weekly. Run the same commands locally before opening a pull request. The one accepted
+Rust advisory, and why, is recorded in `apps/desktop/src-tauri/.cargo/audit.toml`.

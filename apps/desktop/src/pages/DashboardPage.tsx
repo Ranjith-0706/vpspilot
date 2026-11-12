@@ -69,7 +69,7 @@ export default function DashboardPage() {
 
       {state.status === "ready" && servers.length > 0 && (
         <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-4">
             <StatCard
               label="Servers online"
               value={`${live.online}/${live.monitored}`}
@@ -100,7 +100,7 @@ export default function DashboardPage() {
           </div>
 
           {shownAlerts.length > 0 && (
-            <p role="status" className="mt-4 rounded-lg bg-bad/10 p-3 text-sm text-bad">
+            <p role="status" className="mt-4 rounded-md bg-bad/10 p-3 text-sm text-bad">
               {shownAlerts.length} {shownAlerts.length === 1 ? "alert is" : "alerts are"} firing.{" "}
               <Link to={ROUTES.alerts.path} className="font-medium underline">
                 View alerts
@@ -108,7 +108,7 @@ export default function DashboardPage() {
             </p>
           )}
 
-          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 min-[1100px]:grid-cols-2 min-[1700px]:grid-cols-3">
             {servers.map((s) => (
               <LiveServerCard
                 key={s.id}
@@ -134,7 +134,7 @@ export default function DashboardPage() {
         </div>
         {!hideDemo && (
           <>
-            <p className="mb-4 rounded-lg bg-warn/10 p-3 text-sm text-warn">
+            <p className="mb-4 rounded-md bg-warn/10 p-3 text-sm text-warn">
               Everything in this section is sample data. It is not read from your servers.
             </p>
             <DemoDashboard />

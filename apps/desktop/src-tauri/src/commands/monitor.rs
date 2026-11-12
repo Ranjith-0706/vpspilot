@@ -74,6 +74,28 @@ fn alerts_for_sample(app: &AppHandle, server_id: &str, event: &MonitorEvent) -> 
     })
 }
 
+/// Whether an event means samples have stopped arriving (connecting or reconnecting).
+fn is_gap(event: &MonitorEvent) -> bool {
+    matches!(
+        event,
+        MonitorEvent::Status {
+            state: MonitorState::Connecting | MonitorState::Retrying,
+            ..
+        }
+    )
+}
+
+/// A gap in samples ends any run of "consecutive" checks. Alerts already firing are left alone.
+fn note_gap(app: &AppHandle, server_id: &str, event: &MonitorEvent) {
+    if !is_gap(event) {
+        return;
+    }
+    match app.state::<AppState>().engine() {
+        Ok(mut engine) => alerts::note_gap(&mut engine, server_id),
+        Err(e) => eprintln!("alert gap handling failed: {e}"),
+    }
+}
+
 /// Monitoring of a server ended: resolve whatever it had firing.
 fn close_alerts(app: &AppHandle, server_id: &str) -> Vec<AlertEvent> {
     let state = app.state::<AppState>();
@@ -141,6 +163,7 @@ pub async fn start_monitoring(
                     ..
                 }
             );
+            note_gap(&app, &id, &event);
             for alert in alerts_for_sample(&app, &id, &event) {
                 if on_event.send(StreamEvent::alert(alert)).is_err() {
                     break 'events;
@@ -183,6 +206,19 @@ pub fn stop_monitoring(state: State<'_, AppState>, id: String) -> Result<(), App
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_connecting_and_retrying_are_gaps() {
+        let status = |state| MonitorEvent::Status {
+            state,
+            message: None,
+        };
+        assert!(is_gap(&status(MonitorState::Connecting)));
+        assert!(is_gap(&status(MonitorState::Retrying)));
+        assert!(!is_gap(&status(MonitorState::Online)));
+        assert!(!is_gap(&status(MonitorState::Failed)));
+        assert!(!is_gap(&status(MonitorState::Stopped)));
+    }
 
     #[test]
     fn interval_bounds() {

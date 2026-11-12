@@ -72,7 +72,7 @@ export default function TerminalPage() {
                 </select>
               </div>
               {blocker && (
-                <p role="status" className="rounded-lg bg-warn/10 p-3 text-sm text-warn">
+                <p role="status" className="rounded-md bg-warn/10 p-3 text-sm text-warn">
                   {blocker}{" "}
                   <Link to={ROUTES.servers.path} className="underline">
                     Go to Servers
