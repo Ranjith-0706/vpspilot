@@ -8,6 +8,7 @@ mod commands;
 mod credentials;
 mod db;
 mod error;
+mod history;
 mod servers;
 mod ssh;
 mod state;
@@ -63,6 +64,8 @@ pub fn run() {
                 alerts: Default::default(),
                 docker_busy: Default::default(),
             });
+            // Trim old history now and then hourly. Failures are logged and retried next time.
+            tauri::async_runtime::spawn(commands::history::prune_loop(app.handle().clone()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -92,6 +95,9 @@ pub fn run() {
             commands::alerts::list_active_alerts,
             commands::docker::list_docker_containers,
             commands::docker::get_container_logs,
+            commands::history::get_metric_history,
+            commands::history::get_history_retention_days,
+            commands::history::set_history_retention_days,
         ])
         .run(tauri::generate_context!())
         .expect("error while running VPSPilot");

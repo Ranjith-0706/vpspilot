@@ -140,11 +140,37 @@ The Dashboard shows real CPU, memory, disk, load and uptime for saved servers. M
 - **Lifecycle.** Commands: `start_monitoring` (id + interval; restarting replaces the old monitor)
   and `stop_monitoring`. Editing a server, changing its credential, or deleting it stops its
   monitor. At most 20 monitors. Events stream over a Tauri `Channel`; the frontend keeps state in a
-  provider above the router so it survives page navigation. Samples are kept in memory only (last 60
-  per server) and are not stored in SQLite.
+  provider above the router so it survives page navigation. The live view keeps the last 60
+  samples per server in memory; a thinned copy is also stored (see Monitoring history).
 - **Demo data** stays on the Dashboard in its own clearly labelled, hideable section.
-- **Not supported yet:** non-Linux servers, per-process stats, network/disk I/O, persisted
-  history, Docker metrics. (Threshold alerts arrived in Milestone 6.)
+- **Not supported yet:** non-Linux servers, per-process stats, network/disk I/O, Docker metrics.
+  (Threshold alerts arrived in Milestone 6, stored history in Milestone 9.)
+
+## Monitoring history (Milestone 9)
+
+Successful samples are stored in SQLite so charts survive a restart. No new connection is made:
+the monitor's existing forwarder task stores what it already receives.
+
+- **Table** `metric_samples` (migration 4): server id, timestamp (ms), CPU, memory and disk
+  percentages, the three load averages, uptime, core count and memory/disk totals. No host names,
+  commands, remote output or credentials. Indexed on `(server_id, at)` and on `at`.
+  `app_settings` holds the retention period.
+- **What is stored.** Only `sample` events that pass validation (finite, in range, complete).
+  Statuses, failures and stops are never stored as readings. At most one sample per server per
+  minute is kept, however fast the monitor polls, so a server adds about 1,440 rows a day.
+- **Never in the way.** The write runs after the UI has been sent the sample, on a blocking
+  thread. If it fails, monitoring continues, the failure is logged once per run of failures, and
+  the next sample tries again.
+- **Retention.** 7 days by default, configurable from 1 to 90 days in Settings. Expired rows are
+  deleted at startup, hourly, and right after the setting changes, in batches of 5,000 so the
+  database is never held for long.
+- **Deletion.** A server's history is deleted with the server (`ON DELETE CASCADE`). Stopping
+  monitoring simply stops the writes; stored history stays until it expires.
+- **Queries.** `get_metric_history(server_id, range_secs, max_points)` returns at most 300
+  points, averaging samples into time buckets, plus the sample count and the first and last sample
+  times. Missing data is returned as missing (no zero-filled points); the charts draw a gap.
+- **Historical is not live.** The Dashboard has Live and History tabs. History is labelled as
+  recorded data and never shows a connection status.
 ## Alerts (Milestone 6)
 
 Threshold rules over the live monitoring samples. Nothing new runs on a server: alerts are
@@ -252,5 +278,6 @@ time (the list and logs share that slot).
 - Milestone 6: threshold alerts (rules, history, Alerts page).
 - Milestone 7: read-only Docker container list.
 - Milestone 8: container logs.
-- Future: container actions, host logs, live log following, notifications, persisted metrics
-  history, Go agent, passphrase-protected keys.
+- Milestone 9: persistent monitoring history (SQLite, retention, History tab).
+- Future: container actions, host logs, live log following, notifications, Go agent,
+  passphrase-protected keys.

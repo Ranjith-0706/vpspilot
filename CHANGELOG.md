@@ -19,6 +19,11 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 - `CONTRIBUTING.md`, `SECURITY.md` and this changelog.
 - `.gitattributes` (`* text=auto eol=lf`) so Windows checkouts keep LF line endings and
   `prettier --check` passes.
+- Persistent monitoring history: successful samples are stored in SQLite (at most one a minute
+  per server), kept for 7 days by default (1 to 90, configurable in Settings) and removed in
+  the background. The Dashboard has a History tab with a server and time-range selector and CPU,
+  memory, disk and load charts, clearly labelled as recorded data rather than current status.
+  History is deleted with its server.
 - Monitor status events carry an optional `cause` for connect failures, so "Authentication
   failed" is shown only when the backend reported it.
 
@@ -55,4 +60,6 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 - Windows only for credential storage; Linux servers only for monitoring and Docker.
 - Passphrase-protected keys, ssh-agent and host certificates are not supported.
 - No code signing or automatic updates yet.
+- History is stored once a minute, not per poll, and only while monitoring is running, so it has
+  gaps whenever monitoring was off.
 - A terminal session ends when you leave the Terminal page, so it is only visible there.

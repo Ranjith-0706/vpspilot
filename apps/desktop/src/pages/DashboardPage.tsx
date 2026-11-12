@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, MockBadge, PageHeader, StatCard } from "../components/ui";
 import { Button } from "../components/Field";
+import { HistoryView } from "../components/monitoring/HistoryView";
 import { LiveServerCard } from "../components/monitoring/LiveServerCard";
 import { DemoDashboard } from "../demo/DemoDashboard";
 import { useConnections } from "../hooks/useConnections";
@@ -26,6 +27,7 @@ export default function DashboardPage() {
   const { monitors, start, stop, activeAlerts } = useMonitoring();
   const { statusOf } = useConnections();
   const [hideDemo, setHideDemo] = useState(readHideDemo);
+  const [tab, setTab] = useState<"live" | "history">("live");
 
   const servers = state.status === "ready" ? state.servers : [];
   const hostKeys = state.status === "ready" ? state.hostKeys : {};
@@ -70,7 +72,36 @@ export default function DashboardPage() {
       )}
 
       {state.status === "ready" && servers.length > 0 && (
-        <>
+        <div role="tablist" aria-label="Dashboard view" className="mb-4 flex gap-2">
+          {(["live", "history"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              id={`dashboard-tab-${t}`}
+              aria-selected={tab === t}
+              aria-controls="dashboard-panel"
+              onClick={() => setTab(t)}
+              className={`rounded-md border px-4 py-1.5 text-sm font-medium ${
+                tab === t
+                  ? "border-accent bg-accent/15 text-accent"
+                  : "border-border text-muted hover:text-fg"
+              }`}
+            >
+              {t === "live" ? "Live" : "History"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {state.status === "ready" && servers.length > 0 && tab === "history" && (
+        <div role="tabpanel" id="dashboard-panel" aria-labelledby="dashboard-tab-history">
+          <HistoryView servers={servers} />
+        </div>
+      )}
+
+      {state.status === "ready" && servers.length > 0 && tab === "live" && (
+        <div role="tabpanel" id="dashboard-panel" aria-labelledby="dashboard-tab-live">
           <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-4">
             <StatCard
               label="Servers online"
@@ -124,7 +155,7 @@ export default function DashboardPage() {
               />
             ))}
           </div>
-        </>
+        </div>
       )}
 
       <section className="mt-10 border-t border-border pt-6" aria-label="Demo data">

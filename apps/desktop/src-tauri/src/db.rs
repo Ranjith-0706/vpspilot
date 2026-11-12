@@ -83,6 +83,39 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
         );
     ",
     },
+    Migration {
+        version: 4,
+        name: "create_metric_history",
+        sql: "
+        -- Successful monitoring samples, at most one per server per minute. Only usage numbers
+        -- and sizes are kept: no host names, commands, output or credentials. History belongs
+        -- to its server and is deleted with it.
+        CREATE TABLE metric_samples (
+            id                INTEGER PRIMARY KEY,
+            server_id         TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+            at                INTEGER NOT NULL,
+            cpu_percent       REAL NOT NULL CHECK (cpu_percent BETWEEN 0 AND 100),
+            mem_used_percent  REAL NOT NULL CHECK (mem_used_percent BETWEEN 0 AND 100),
+            disk_used_percent REAL NOT NULL CHECK (disk_used_percent BETWEEN 0 AND 100),
+            load1             REAL NOT NULL CHECK (load1 >= 0),
+            load5             REAL NOT NULL CHECK (load5 >= 0),
+            load15            REAL NOT NULL CHECK (load15 >= 0),
+            uptime_secs       INTEGER NOT NULL CHECK (uptime_secs >= 0),
+            cores             INTEGER NOT NULL CHECK (cores >= 1),
+            mem_total_kib     INTEGER NOT NULL CHECK (mem_total_kib >= 0),
+            disk_total_kib    INTEGER NOT NULL CHECK (disk_total_kib >= 0)
+        );
+
+        CREATE INDEX idx_metric_samples_server_at ON metric_samples (server_id, at);
+        -- For the retention cleanup, which is not per server.
+        CREATE INDEX idx_metric_samples_at ON metric_samples (at);
+
+        CREATE TABLE app_settings (
+            key   TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL
+        );
+    ",
+    },
 ];
 
 #[cfg(test)]
