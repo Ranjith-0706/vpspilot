@@ -14,6 +14,8 @@ import {
   describeCondition,
   describeEvent,
   severityOf,
+  isAlertStale,
+  staleAlertNote,
 } from "../services/alertsState";
 import { toAppError } from "../services/ipc";
 import type { AlertRule, AlertRuleInput } from "../types/alerts";
@@ -28,7 +30,7 @@ type Modal =
 const time = (ms: number) => new Date(ms).toLocaleString();
 
 export default function AlertsPage() {
-  const { activeAlerts, alertVersion } = useMonitoring();
+  const { activeAlerts, alertVersion, monitors } = useMonitoring();
   const { state: data, reload } = useAlertData(alertVersion);
   const { state: serversState } = useServers();
   const [modal, setModal] = useState<Modal>(null);
@@ -143,8 +145,17 @@ export default function AlertsPage() {
                           Reached {Math.round(a.value)}% (limit {a.threshold}%) · since{" "}
                           {time(a.since)}
                         </p>
+                        {isAlertStale(monitors[a.serverId]) && (
+                          <p role="status" className="mt-1 text-xs text-warn">
+                            {staleAlertNote(monitors[a.serverId])}
+                          </p>
+                        )}
                       </div>
-                      <Badge tone={severityOf(a.threshold)}>firing</Badge>
+                      {isAlertStale(monitors[a.serverId]) ? (
+                        <Badge tone="neutral">status unknown</Badge>
+                      ) : (
+                        <Badge tone={severityOf(a.threshold)}>firing</Badge>
+                      )}
                     </div>
                   </Card>
                 ))}

@@ -8,6 +8,7 @@ import type {
   RuleFormErrors,
   RuleFormValues,
 } from "../types/alerts";
+import type { ServerMonitor } from "../types/metrics";
 import { MONITOR_INTERVAL_SECS } from "./monitorState";
 
 /** Mirrors the limits enforced by the Rust backend. */
@@ -58,6 +59,23 @@ export function applyAlertEvent(active: ActiveAlert[], event: AlertEvent): Activ
 export function dropServerAlerts(active: ActiveAlert[], serverId: string): ActiveAlert[] {
   const rest = active.filter((a) => a.serverId !== serverId);
   return rest.length === active.length ? active : rest;
+}
+
+/**
+ * Whether an alert's state can currently be trusted. A firing alert is only confirmed while the
+ * server's monitor is online, i.e. fresh samples are arriving. While it is connecting or
+ * reconnecting, or when nothing is monitoring the server (for example after the window
+ * reloaded), the alert is neither confirmed nor resolved: its status is unknown.
+ */
+export function isAlertStale(monitor: ServerMonitor | undefined): boolean {
+  return monitor?.state !== "online";
+}
+
+/** Short explanation shown next to a stale alert. */
+export function staleAlertNote(monitor: ServerMonitor | undefined): string {
+  return monitor === undefined
+    ? "Not being monitored right now, so this alert's current status is unknown."
+    : "The server is not responding. This alert's current status is unknown until it reconnects.";
 }
 
 /** "15 s", "2 min" or "1 min 30 s". */

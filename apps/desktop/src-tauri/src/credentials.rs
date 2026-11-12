@@ -75,11 +75,14 @@ pub mod testing {
     pub struct MemoryStore {
         pub items: Mutex<HashMap<String, String>>,
         pub fail: Mutex<bool>,
+        /// Fail only `set` / only `delete`, to test compensation between SQLite and the store.
+        pub fail_set: Mutex<bool>,
+        pub fail_delete: Mutex<bool>,
     }
 
     impl CredentialStore for MemoryStore {
         fn set(&self, reference: &str, secret: &str) -> Result<(), AppError> {
-            if *self.fail.lock().unwrap() {
+            if *self.fail.lock().unwrap() || *self.fail_set.lock().unwrap() {
                 return Err(AppError::credential("simulated failure"));
             }
             self.items
@@ -89,7 +92,7 @@ pub mod testing {
             Ok(())
         }
         fn delete(&self, reference: &str) -> Result<(), AppError> {
-            if *self.fail.lock().unwrap() {
+            if *self.fail.lock().unwrap() || *self.fail_delete.lock().unwrap() {
                 return Err(AppError::credential("simulated failure"));
             }
             self.items.lock().unwrap().remove(reference);
