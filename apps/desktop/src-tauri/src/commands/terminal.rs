@@ -4,7 +4,8 @@
 use crate::error::AppError;
 use crate::ssh::service;
 use crate::ssh::terminal::{self, TerminalEvent, TerminalHandle};
-use crate::state::{AppState, TerminalEntry};
+use crate::ssh::terminal_registry::{self, OWNER_PROBE_INTERVAL};
+use crate::state::AppState;
 use tauri::State;
 use tauri::ipc::Channel;
 use tokio::sync::mpsc;
@@ -12,11 +13,7 @@ use tokio::sync::mpsc;
 pub const MAX_SESSIONS: usize = 8;
 
 fn session(state: &AppState, session_id: &str) -> Result<TerminalHandle, AppError> {
-    state
-        .terminals()?
-        .get(session_id)
-        .map(|e| e.handle.clone())
-        .ok_or_else(|| AppError::not_found("Terminal session"))
+    terminal_registry::handle_of(&state.terminals, session_id)
 }
 
 #[tauri::command]
@@ -28,44 +25,36 @@ pub async fn open_terminal(
     on_event: Channel<TerminalEvent>,
 ) -> Result<String, AppError> {
     let (cols, rows) = terminal::validate_size(cols, rows)?;
-    if state.terminals()?.len() >= MAX_SESSIONS {
-        return Err(AppError::connection(format!(
-            "At most {MAX_SESSIONS} terminals can be open at once."
-        )));
-    }
+    let (tx, rx) = mpsc::channel::<TerminalEvent>(64);
 
-    // Load everything first; the database guard must not be held across the network await.
-    let params = {
-        let conn = state.conn()?;
-        service::prepare_connection(&conn, state.credentials.as_ref(), &id)?
-    };
+    // The place in the registry is reserved first (atomically with the session cap) and the
+    // session is registered last, only if the server was not revoked in between.
+    let (session_id, handle) =
+        terminal_registry::open_session(&state.terminals, &id, MAX_SESSIONS, || async {
+            // Load everything first; the database guard must not be held across the network await.
+            let params = {
+                let conn = state.conn()?;
+                service::prepare_connection(&conn, state.credentials.as_ref(), &id)?
+            };
+            terminal::start(params, cols, rows, tx)
+                .await
+                .map_err(AppError::connection)
+        })
+        .await?;
 
-    let (tx, mut rx) = mpsc::channel::<TerminalEvent>(64);
-    let handle = terminal::start(params, cols, rows, tx)
-        .await
-        .map_err(AppError::connection)?;
-
-    let session_id = uuid::Uuid::new_v4().to_string();
-    state.terminals()?.insert(
-        session_id.clone(),
-        TerminalEntry {
-            server_id: id.clone(),
-            handle: handle.clone(),
-        },
-    );
-
-    // Forward events to the frontend; when the session ends, forget it.
-    let sessions = state.terminal_sessions();
+    // Forward events to the frontend; when the session ends, forget it. An idle session whose
+    // frontend has gone away (reloaded or destroyed webview) is closed by the periodic probe.
+    let sessions = state.terminals.clone();
     let sid = session_id.clone();
     tokio::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            if on_event.send(event).is_err() {
-                handle.close(); // the frontend is gone; end the remote shell
-            }
-        }
-        if let Ok(mut map) = sessions.lock() {
-            map.remove(&sid);
-        }
+        terminal_registry::forward_events(
+            rx,
+            handle,
+            move |event| on_event.send(event).is_ok(),
+            OWNER_PROBE_INTERVAL,
+        )
+        .await;
+        terminal_registry::forget(&sessions, &sid);
     });
 
     Ok(session_id)

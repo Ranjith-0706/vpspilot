@@ -3,19 +3,10 @@ use crate::credentials::CredentialStore;
 use crate::error::AppError;
 use crate::ssh::monitor::MonitorHandle;
 use crate::ssh::service::PendingKeys;
-use crate::ssh::terminal::TerminalHandle;
+use crate::ssh::terminal_registry::{self, TerminalSessions};
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
-
-/// An open terminal, remembered with its server so it can be closed when that server's trust or
-/// credentials change.
-pub struct TerminalEntry {
-    pub server_id: String,
-    pub handle: TerminalHandle,
-}
-
-pub type TerminalSessions = Arc<Mutex<HashMap<String, TerminalEntry>>>;
 
 /// A running monitor. `token` lets a finished monitor remove only its own registry entry.
 pub struct MonitorEntry {
@@ -51,24 +42,6 @@ fn claim_docker(busy: &DockerBusy, id: &str) -> Option<DockerGuard> {
         busy: busy.clone(),
         id: id.to_string(),
     })
-}
-
-fn close_terminals_in(sessions: &TerminalSessions, server_id: &str) {
-    // Remove first so nothing more can be written to a revoked session, then ask each to end.
-    let closing: Vec<TerminalEntry> = match sessions.lock() {
-        Ok(mut map) => {
-            let ids: Vec<String> = map
-                .iter()
-                .filter(|(_, e)| e.server_id == server_id)
-                .map(|(k, _)| k.clone())
-                .collect();
-            ids.iter().filter_map(|k| map.remove(k)).collect()
-        }
-        Err(_) => return,
-    };
-    for entry in closing {
-        entry.handle.close();
-    }
 }
 
 pub struct AppState {
@@ -109,16 +82,6 @@ impl AppState {
         }
     }
 
-    pub fn terminals(&self) -> Result<MutexGuard<'_, HashMap<String, TerminalEntry>>, AppError> {
-        self.terminals
-            .lock()
-            .map_err(|_| AppError::internal("Terminal state lock was poisoned."))
-    }
-
-    pub fn terminal_sessions(&self) -> TerminalSessions {
-        self.terminals.clone()
-    }
-
     pub fn monitors(&self) -> Result<MutexGuard<'_, HashMap<String, MonitorEntry>>, AppError> {
         self.monitors
             .lock()
@@ -138,11 +101,17 @@ impl AppState {
         }
     }
 
-    /// Ends every open terminal of a server (no-op if it has none). Used whenever the server is
-    /// deleted or its host, credential or trusted key changes, so a session opened under the old
-    /// settings cannot outlive them.
+    /// Ends every open terminal of a server (no-op if it has none) and invalidates terminals of
+    /// it that are still connecting. Used whenever the server is deleted or its host, credential
+    /// or trusted key changes, so a session opened under the old settings cannot outlive them.
     pub fn close_terminals(&self, server_id: &str) {
-        close_terminals_in(&self.terminals, server_id);
+        terminal_registry::revoke_server(&self.terminals, server_id);
+    }
+
+    /// Ends every terminal and invalidates all that are still connecting. Used when the webview
+    /// that owns them reloads or goes away.
+    pub fn close_all_terminals(&self) {
+        terminal_registry::revoke_all(&self.terminals);
     }
 
     /// Revokes everything running against a server: its terminals and its monitor.
@@ -172,35 +141,6 @@ mod tests {
             claim_docker(&busy, "s2").is_some(),
             "other servers are independent"
         );
-    }
-
-    #[tokio::test]
-    async fn closing_terminals_affects_only_that_server() {
-        let sessions = TerminalSessions::default();
-        let (a, _ra, closed_a) = TerminalHandle::detached();
-        let (b, _rb, closed_b) = TerminalHandle::detached();
-        for (sid, server, handle) in [("t1", "s1", a), ("t2", "s2", b)] {
-            sessions.lock().unwrap().insert(
-                sid.into(),
-                TerminalEntry {
-                    server_id: server.into(),
-                    handle,
-                },
-            );
-        }
-        close_terminals_in(&sessions, "s1");
-        {
-            let map = sessions.lock().unwrap();
-            assert!(!map.contains_key("t1") && map.contains_key("t2"));
-        }
-        let signalled = |n: Arc<tokio::sync::Notify>| async move {
-            tokio::time::timeout(std::time::Duration::from_millis(100), n.notified())
-                .await
-                .is_ok()
-        };
-        assert!(signalled(closed_a).await, "s1 terminal was told to close");
-        assert!(!signalled(closed_b).await, "s2 terminal was left alone");
-        close_terminals_in(&sessions, "nobody"); // no-op
     }
 
     #[test]
