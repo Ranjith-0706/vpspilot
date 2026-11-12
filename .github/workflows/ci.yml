@@ -75,6 +75,35 @@ jobs:
         run: cargo test
         working-directory: apps/desktop/src-tauri
 
+  e2e:
+    name: UI tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # The real frontend in a browser with Tauri's backend mocked: rendering and page behaviour
+      # only. SSH, the credential store and SQLite are covered by the Rust tests.
+      - name: UI tests
+        run: npm run test:e2e
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

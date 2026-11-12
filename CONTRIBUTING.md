@@ -28,6 +28,16 @@ cargo test
 cargo audit            # new advisories fail CI
 ```
 
+UI tests use Playwright with Tauri's backend mocked (`apps/desktop/e2e`). They check rendering and
+page behaviour in Chromium; they do not touch SSH, the credential store or SQLite. One-time setup,
+then run them with:
+
+```bash
+# apps/desktop
+npx playwright install chromium
+npm run test:e2e
+```
+
 `cargo test -- --ignored` additionally runs the test that touches your real Windows Credential
 Manager. It is not run in CI.
 

@@ -17,6 +17,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
   `npm audit --omit=dev`), run on pull requests, on `main` and weekly.
 - React error boundary with a recovery screen that shows no error details.
 - `CONTRIBUTING.md`, `SECURITY.md` and this changelog.
+- Playwright UI tests (`npm run test:e2e`, `apps/desktop/e2e`) run the real frontend in Chromium
+  with Tauri's backend mocked, plus a CI job. They cover the connection status, the History tab
+  (including switching servers while replies are in flight), the retention setting, and a
+  light/dark and wide/narrow layout check. SSH, credentials and SQLite are not exercised.
 - `.gitattributes` (`* text=auto eol=lf`) so Windows checkouts keep LF line endings and
   `prettier --check` passes.
 - Persistent monitoring history: successful samples are stored in SQLite (at most one a minute
