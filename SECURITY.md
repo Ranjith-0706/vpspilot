@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-VPSPilot is pre-release (0.1.0). Only the latest commit on `main` is supported.
+VPSPilot is pre-release (0.2.0). Only the latest commit on `main` is supported.
 
 ## Reporting a vulnerability
 
