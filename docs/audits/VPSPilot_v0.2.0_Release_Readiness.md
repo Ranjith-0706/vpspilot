@@ -52,7 +52,7 @@ Downgrade policy: `bundle.windows.allowDowngrades` is `false`. In the generated 
 Install scope differs: NSIS installs per user (`%LOCALAPPDATA%\VPSPilot`), the MSI per machine (Program Files). Use one of them per PC. The installers are described in `docs/development/windows-beta-install.md`.
 
 Findings:
-- **Publisher / CompanyName is still `vpspilot`** (derived from the bundle identifier). `LegalCopyright` is empty. The legal publisher and copyright holder are pending from the owner and have deliberately not been invented. The executable's file description still reads "VPSPilot".
+- **Publisher and copyright are now set** (owner-approved): publisher `Ranjith`, copyright `Copyright © 2026 Ranjith`, via `bundle.publisher` and `bundle.copyright`. Because the files are unsigned, Windows still reports an unknown publisher. The executable's file description still reads "VPSPilot".
 - **The application icon is still the stock Tauri logo** (`src-tauri/icons/128x128.png`), pending an approved source image. The configuration is ready: `npx tauri icon <source.png>` regenerates the set.
 - Old 0.1.0 installers still sit in the same `bundle` folder; delete or ignore them when distributing.
 - The installers are unsigned, so Windows SmartScreen will warn. Signing was not attempted, as instructed.
@@ -71,7 +71,7 @@ Findings:
 For **public release**:
 1. No real-VPS testing has been done (section 4).
 2. No installed-build testing: first run, upgrade, uninstall, clean machine (section 5).
-3. Placeholder application icon, publisher `vpspilot` and empty copyright (waiting for approved branding).
+3. Placeholder application icon (waiting for an approved image).
 4. Installers are unsigned.
 5. Work is not merged to `main` and CI status is unconfirmed.
 
@@ -81,7 +81,7 @@ No genuine release-blocking code defect was found during validation, so no code 
 
 ## 8. Recommended fixes
 
-1. When approved branding arrives: add a real icon set (`npx tauri icon <source.png>`), a `publisher` and a `copyright` in `tauri.conf.json`, and rebuild. (Description and the downgrade policy are done.)
+1. When an approved icon arrives: add a real icon set (`npx tauri icon <source.png>`) and rebuild. (Description, publisher, copyright and the downgrade policy are done.)
 2. Run `docs/testing/mvp-validation-report.md` Appendices A and B on a throwaway VPS (password and key, host key change, Docker with and without permission, outage and reconnect, 2 to 3 servers).
 3. Test the installers on a clean Windows VM (section 9).
 4. Open a PR to `main`, confirm CI is green, then merge.
@@ -103,7 +103,8 @@ No genuine release-blocking code defect was found during validation, so no code 
 - [ ] Uninstall removes the app and its handling of user data matches what is documented
 - [x] Product description set; downgrades blocked (`allowDowngrades: false`), build-script check only
 - [ ] Downgrade block verified by installing 0.2.0 then an older build on a VM
-- [ ] Real icon, publisher and copyright set; rebuilt (waiting for approved branding)
+- [x] Publisher and copyright set (Ranjith)
+- [ ] Real icon set; rebuilt (waiting for an approved image)
 - [ ] Installers signed (needs approval and a certificate)
 - [ ] Tag `v0.2.0` and publish (needs approval)
 
@@ -111,4 +112,4 @@ No genuine release-blocking code defect was found during validation, so no code 
 
 **Internal Beta Ready.**
 
-Code quality and automated checks are strong, and the installers build. It is not Public Release Ready because the product has never been tested against a real server or from an installed build, the icon and publisher are placeholders, and the installers are unsigned.
+Code quality and automated checks are strong, and the installers build. It is not Public Release Ready because the product has never been tested against a real server or from an installed build, the icon is a placeholder, and the installers are unsigned.

@@ -27,6 +27,8 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Ranjith",
+    "copyright": "Copyright © 2026 Ranjith",
     "shortDescription": "A lightweight desktop application for monitoring and managing Linux VPS servers through SSH.",
     "longDescription": "A lightweight desktop application for monitoring and managing Linux VPS servers through SSH.",
     "icon": [
