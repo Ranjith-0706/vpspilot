@@ -20,7 +20,7 @@ Use **one** of them on a PC. Installing both gives two separate copies of the ap
 ## Install
 
 1. Download the installer and run it.
-2. **SmartScreen:** because the beta is unsigned, Windows may show "Windows protected your PC" with the publisher listed as unknown. This is expected for an unsigned build. Only continue if you got the file directly from the VPSPilot maintainer, and compare its SHA-256 hash with the one they published (`Get-FileHash <file>` in PowerShell). If you are not sure where the file came from, do not run it. Do not turn off Windows Defender or SmartScreen.
+2. **SmartScreen:** because the beta is unsigned, Windows may show "Windows protected your PC" with the publisher listed as unknown. This is expected for an unsigned build: the installer's publisher text is `Ranjith`, but Windows only shows a verified publisher for a signed file. Only continue if you got the file directly from the VPSPilot maintainer, and compare its SHA-256 hash with the one they published (`Get-FileHash <file>` in PowerShell). If you are not sure where the file came from, do not run it. Do not turn off Windows Defender or SmartScreen.
 3. Follow the installer and start VPSPilot from the Start menu.
 
 ## First run
