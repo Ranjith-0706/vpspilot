@@ -21,3 +21,30 @@ ignore = [
   # feature in Cargo.toml and this entry).
   "RUSTSEC-2023-0071",
 ]
+
+# ---------------------------------------------------------------------------------------------
+# Warnings that are reported but do NOT fail `cargo audit` (they are unmaintained/unsound notices,
+# not vulnerabilities). They are deliberately NOT listed in `ignore` above, so they stay visible
+# in every run and a change in their status is noticed. Reviewed 2026-11-19 with
+# `cargo tree --target all -e all -i <crate>` and `cargo tree --target x86_64-pc-windows-msvc`.
+#
+# RUSTSEC-2026-0543  chrono 0.4.45 (unmaintained)
+#   Path:   vpspilot-desktop -> russh 0.65.0 -> russh-util 0.52.0 -> chrono
+#   Target: russh-util depends on chrono only for `cfg(target_arch = "wasm32")`. It is not in the
+#           Windows dependency graph and is not compiled into the Windows release.
+#   Decision: track. Nothing to do for the Windows build. Re-check when russh is updated.
+#
+# RUSTSEC-2024-0370  proc-macro-error 1.0.4 (unmaintained)
+#   Path:   vpspilot-desktop -> tauri -> muda -> gtk -> glib -> glib-macros -> proc-macro-error
+#   Target: Linux only (the GTK stack that Tauri uses on Linux). Not in the Windows graph and not
+#           compiled into the Windows release.
+#   Decision: track. Fixed upstream by Tauri/GTK-rs moving off it; no action in this repository.
+#
+# RUSTSEC-2024-0429  glib 0.18.5 (unsound: VariantStrIter Iterator impls)
+#   Path:   vpspilot-desktop -> tauri -> muda -> gtk -> glib (same Linux-only GTK stack)
+#   Target: Linux only. Not in the Windows graph and not compiled into the Windows release.
+#   Decision: track. VPSPilot ships for Windows only. If a Linux build is ever released, this
+#             must be reassessed first (upgrade Tauri/GTK-rs to a glib >= 0.20).
+#
+# Do not change Cargo dependencies only to silence these warnings.
+# ---------------------------------------------------------------------------------------------
