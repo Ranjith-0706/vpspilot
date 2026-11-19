@@ -1,7 +1,7 @@
 [package]
 name = "vpspilot-desktop"
 version = "0.2.0"
-description = "VPSPilot - open-source VPS monitoring and management"
+description = "A lightweight desktop application for monitoring and managing Linux VPS servers through SSH."
 authors = ["VPSPilot contributors"]
 edition = "2024"
 
