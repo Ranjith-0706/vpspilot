@@ -27,6 +27,9 @@ const COMMANDS: &[&str] = &[
     "list_active_alerts",
     "list_docker_containers",
     "get_container_logs",
+    "get_metric_history",
+    "get_history_retention_days",
+    "set_history_retention_days",
 ];
 
 fn main() {

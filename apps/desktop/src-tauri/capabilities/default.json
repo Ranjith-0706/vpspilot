@@ -30,6 +30,9 @@
     "allow-clear-alert-events",
     "allow-list-active-alerts",
     "allow-list-docker-containers",
-    "allow-get-container-logs"
+    "allow-get-container-logs",
+    "allow-get-metric-history",
+    "allow-get-history-retention-days",
+    "allow-set-history-retention-days"
   ]
 }
