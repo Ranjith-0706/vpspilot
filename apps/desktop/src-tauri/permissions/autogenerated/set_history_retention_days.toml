@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-history-retention-days"
+description = "Enables the set_history_retention_days command without any pre-configured scope."
+commands.allow = ["set_history_retention_days"]
+
+[[permission]]
+identifier = "deny-set-history-retention-days"
+description = "Denies the set_history_retention_days command without any pre-configured scope."
+commands.deny = ["set_history_retention_days"]
